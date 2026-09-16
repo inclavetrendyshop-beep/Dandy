@@ -58,6 +58,7 @@ export default function SwipeDeck() {
         const d = distanceKm(myProfile.lat, myProfile.lng, c.lat, c.lng);
         if (d > myProfile.pref_max_distance) return false;
       }
+      if (myProfile.country && c.country && myProfile.country !== c.country) return false;
       return true;
     });
 
