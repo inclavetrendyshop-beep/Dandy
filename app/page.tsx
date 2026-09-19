@@ -15,12 +15,15 @@ type Profile = {
   lng: number | null;
 };
 
+const FREE_MAX_DISTANCE_KM = 5;
+
 export default function SwipeDeck() {
   const router = useRouter();
   const [me, setMe] = useState<any>(null);
   const [deck, setDeck] = useState<Profile[]>([]);
   const [matchName, setMatchName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [distanceCapped, setDistanceCapped] = useState(false);
 
   useEffect(() => {
     load();
@@ -51,15 +54,24 @@ export default function SwipeDeck() {
 
     const { data: candidates } = await query;
 
+    const isPremium = !!myProfile.is_premium;
+    const preferredMax = myProfile.pref_max_distance ?? FREE_MAX_DISTANCE_KM;
+    const effectiveMaxDistance = isPremium ? preferredMax : Math.min(preferredMax, FREE_MAX_DISTANCE_KM);
+    let cappedSomeone = false;
+
     const filtered = (candidates || []).filter((c) => {
       if (swipedIds.includes(c.id)) return false;
       if (myProfile.lat && myProfile.lng && c.lat && c.lng) {
         const d = distanceKm(myProfile.lat, myProfile.lng, c.lat, c.lng);
-        if (d > myProfile.pref_max_distance) return false;
+        if (d > effectiveMaxDistance) {
+          if (!isPremium && d <= preferredMax) cappedSomeone = true;
+          return false;
+        }
       }
       return true;
     });
 
+    setDistanceCapped(!isPremium && cappedSomeone);
     setDeck(filtered);
     setLoading(false);
   }
@@ -170,6 +182,7 @@ export default function SwipeDeck() {
         <div style={{ display: "flex", gap: 16 }}>
           <a href="/events" style={{ color: "#f5f5f5" }}>Eventos</a>
           <a href="/matches" style={{ color: "#f5f5f5" }}>Matches</a>
+          <a href="/radio" style={{ color: "#f5f5f5" }}>Radio</a>
           <a href="/settings" style={{ color: "#f5f5f5" }}>Filtros</a>
         </div>
       </div>
@@ -188,6 +201,42 @@ export default function SwipeDeck() {
         >
           ¡Nuevo match con {matchName}! <a href="/matches" style={{ textDecoration: "underline" }}>Ver chat</a>
           <button onClick={() => setMatchName(null)} style={{ float: "right", background: "none", border: "none", fontWeight: 700 }}>✕</button>
+        </div>
+      )}
+
+      {distanceCapped && (
+        <div
+          style={{
+            background: "#1e1e1e",
+            border: "1px solid #c9a24b",
+            borderRadius: 8,
+            padding: 14,
+            marginBottom: 16,
+            fontSize: 13,
+            color: "#f5f5f5",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <span>Con la cuenta gratuita solo ves perfiles a menos de {FREE_MAX_DISTANCE_KM} km. Hay más gente esperando un poco más lejos.</span>
+          
+            href="/settings"
+            style={{
+              flexShrink: 0,
+              background: "#c9a24b",
+              color: "#1a1a1a",
+              fontWeight: 700,
+              padding: "6px 14px",
+              borderRadius: 8,
+              fontSize: 12,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Hazte Premium
+          </a>
         </div>
       )}
 
