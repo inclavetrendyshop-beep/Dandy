@@ -103,7 +103,7 @@ export default function Onboarding() {
       photoUrls.push(data.publicUrl);
     }
 
-    const { error: dbErr } = await supabase.from("profiles").insert({
+    const { error: dbErr } = await supabase.from("profiles").upsert({
       id: userId,
       name,
       age: Number(age),
