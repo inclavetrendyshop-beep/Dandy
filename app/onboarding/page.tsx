@@ -15,7 +15,6 @@ export default function Onboarding() {
   const [files, setFiles] = useState<File[]>([]);
   const TAG_OPTIONS = ["Barba", "Canas", "Elegante", "Clásico", "Ejecutivo", "Viajero"];
 
-  // --- Comunidad / tribu: estilo Scruff, se guardan en el mismo array "tags" ---
   const TRIBE_OPTIONS = [
     "Oso",
     "Nutria",
@@ -38,13 +37,11 @@ export default function Onboarding() {
     "Vicio",
     "Sexo casual",
   ];
-  // --- fin comunidad / tribu ---
 
   function toggleTag(tag: string) {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
   }
 
-  // --- Posición / rol: selección única, como en Scruff ---
   const [role, setRole] = useState<string | null>(null);
   const ROLE_OPTIONS = [
     "Activo",
@@ -59,7 +56,6 @@ export default function Onboarding() {
   function selectRole(option: string) {
     setRole((prev) => (prev === option ? null : option));
   }
-  // --- fin posición / rol ---
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -209,4 +205,3 @@ export default function Onboarding() {
     </div>
   );
 }
-    
