@@ -95,83 +95,10 @@ export default function SwipeDeck() {
     }
     setDeck((d) => d.slice(1));
   }
+
   if (loading) {
-    return (
-      <div className="dandy-splash">
-        <div className="mark">
-          <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <path d="M 10 22 C 10 42, 24 54, 32 54 C 40 54, 54 42, 54 22" />
-          </svg>
-        </div>
-        <h1 className="wordmark">Dandy</h1>
-        <div className="rule" />
-        <p className="tagline">Para hombres con carácter, barba<br />y algo de historia que contar.</p>
-        <style jsx>{`
-          .dandy-splash {
-            min-height: 100vh;
-            background: #0d0d0d;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 48px 32px;
-            text-align: center;
-          }
-          .mark {
-            width: 56px;
-            height: 56px;
-            margin-bottom: 24px;
-            opacity: 0;
-            animation: markIn 1s ease-out 0.1s forwards;
-          }
-          .mark svg { width: 100%; height: 100%; }
-          .mark path {
-            fill: none;
-            stroke: #e8352b;
-            stroke-width: 1.3;
-            stroke-linecap: round;
-            stroke-dasharray: 220;
-            stroke-dashoffset: 220;
-            animation: draw 1.4s ease 0.25s forwards;
-          }
-          .wordmark {
-            font-family: Georgia, "Times New Roman", serif;
-            font-style: italic;
-            font-weight: 500;
-            font-size: 44px;
-            color: #f5f5f5;
-            margin: 0;
-            opacity: 0;
-            transform: translateY(8px);
-            animation: fadeUp 0.8s ease 0.8s forwards;
-          }
-          .rule {
-            width: 0;
-            height: 1px;
-            background: rgba(245,245,245,0.15);
-            margin: 20px 0;
-            animation: widen 0.7s ease 1.4s forwards;
-          }
-          .tagline {
-            font-family: Georgia, serif;
-            font-style: italic;
-            font-size: 15px;
-            line-height: 1.5;
-            color: #9a9a9a;
-            max-width: 260px;
-            margin: 0;
-            opacity: 0;
-            animation: fadeUp 0.8s ease 1.7s forwards;
-          }
-          @keyframes markIn { to { opacity: 1; } }
-          @keyframes draw { to { stroke-dashoffset: 0; } }
-          @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
-          @keyframes widen { to { width: 56px; } }
-        `}</style>
-      </div>
-    );
+    return <div style={{ padding: 24, color: "#9a9a9a" }}>Cargando...</div>;
   }
-  if (loading) return <div style={{ padding: 24, color: "#9a9a9a" }}>Cargando...</div>;
 
   const current = deck[0];
 
@@ -259,37 +186,4 @@ export default function SwipeDeck() {
           </div>
           <div style={{ padding: 16 }}>
             <p style={{ fontSize: 20, fontWeight: 700 }}>{current.name}, {current.age}</p>
-            <p style={{ fontSize: 13, color: "#9a9a9a" }}>{current.city}</p>
-            <p style={{ marginTop: 8 }}>{current.bio}</p>
-            {current.tags?.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-                {current.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    style={{ background: "#2a2a2a", color: "#f2c14e", fontSize: 12, padding: "4px 10px", borderRadius: 20 }}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 24, padding: 16, borderTop: "2px solid #2a2a2a" }}>
-            <button
-              onClick={() => handleSwipe("pass")}
-              style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #9a9a9a", background: "none", color: "#9a9a9a", fontSize: 20 }}
-            >
-              ✕
-            </button>
-            <button
-              onClick={() => handleSwipe("like")}
-              style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #e8352b", background: "#e8352b", color: "#fff", fontSize: 20 }}
-            >
-              ♥
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+            <p style={{
