@@ -45,6 +45,14 @@ export default function SwipeDeck() {
     const { data: swiped } = await supabase.from("swipes").select("swiped_id").eq("swiper_id", myProfile.id);
     const swipedIds = (swiped || []).map((s) => s.swiped_id);
 
+    const { data: blocked } = await supabase
+      .from("blocks")
+      .select("blocker_id, blocked_id")
+      .or(`blocker_id.eq.${myProfile.id},blocked_id.eq.${myProfile.id}`);
+    const blockedIds = (blocked || []).map((b) =>
+      b.blocker_id === myProfile.id ? b.blocked_id : b.blocker_id
+    );
+
     let query = supabase
       .from("profiles")
       .select("*")
@@ -61,6 +69,7 @@ export default function SwipeDeck() {
 
     const filtered = (candidates || []).filter((c) => {
       if (swipedIds.includes(c.id)) return false;
+      if (blockedIds.includes(c.id)) return false;
       if (myProfile.lat && myProfile.lng && c.lat && c.lng) {
         const d = distanceKm(myProfile.lat, myProfile.lng, c.lat, c.lng);
         if (d > effectiveMaxDistance) {
@@ -93,6 +102,25 @@ export default function SwipeDeck() {
         setMatchName(target.name);
       }
     }
+    setDeck((d) => d.slice(1));
+  }
+
+  async function handleBlock() {
+    if (!me || deck.length === 0) return;
+    const target = deck[0];
+    if (!confirm(`Bloquear a ${target.name}? No volveras a ver este perfil.`)) return;
+    await supabase.from("blocks").insert({ blocker_id: me.id, blocked_id: target.id });
+    setDeck((d) => d.slice(1));
+  }
+
+  async function handleReport() {
+    if (!me || deck.length === 0) return;
+    const target = deck[0];
+    const reason = prompt(`Por que quieres denunciar a ${target.name}? (breve motivo)`);
+    if (reason === null) return;
+    await supabase.from("reports").insert({ reporter_id: me.id, reported_id: target.id, reason });
+    await supabase.from("blocks").insert({ blocker_id: me.id, blocked_id: target.id });
+    alert("Gracias, hemos recibido tu denuncia.");
     setDeck((d) => d.slice(1));
   }
 
@@ -148,7 +176,7 @@ export default function SwipeDeck() {
           }}
         >
           <span>Con la cuenta gratuita solo ves perfiles a menos de {FREE_MAX_DISTANCE_KM} km. Hay mas gente esperando un poco mas lejos.</span>
-          <a
+          
             href="/settings"
             style={{
               flexShrink: 0,
@@ -200,6 +228,14 @@ export default function SwipeDeck() {
                 ))}
               </div>
             )}
+            <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
+              <button onClick={handleBlock} style={{ background: "none", border: "none", color: "#9a9a9a", fontSize: 12, cursor: "pointer", padding: 0 }}>
+                Bloquear
+              </button>
+              <button onClick={handleReport} style={{ background: "none", border: "none", color: "#9a9a9a", fontSize: 12, cursor: "pointer", padding: 0 }}>
+                Denunciar
+              </button>
+            </div>
           </div>
           <div style={{ display: "flex", justifyContent: "center", gap: 24, padding: 16, borderTop: "2px solid #2a2a2a" }}>
             <button
