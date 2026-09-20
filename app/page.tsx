@@ -108,7 +108,7 @@ export default function SwipeDeck() {
   async function handleBlock() {
     if (!me || deck.length === 0) return;
     const target = deck[0];
-    if (!confirm(`Bloquear a ${target.name}? No volveras a ver este perfil.`)) return;
+    if (!confirm("Bloquear a " + target.name + "? No volveras a ver este perfil.")) return;
     await supabase.from("blocks").insert({ blocker_id: me.id, blocked_id: target.id });
     setDeck((d) => d.slice(1));
   }
@@ -116,7 +116,7 @@ export default function SwipeDeck() {
   async function handleReport() {
     if (!me || deck.length === 0) return;
     const target = deck[0];
-    const reason = prompt(`Por que quieres denunciar a ${target.name}? (breve motivo)`);
+    const reason = prompt("Por que quieres denunciar a " + target.name + "? (breve motivo)");
     if (reason === null) return;
     await supabase.from("reports").insert({ reporter_id: me.id, reported_id: target.id, reason });
     await supabase.from("blocks").insert({ blocker_id: me.id, blocked_id: target.id });
@@ -143,55 +143,16 @@ export default function SwipeDeck() {
       </div>
 
       {matchName && (
-        <div
-          style={{
-            background: "#f2c14e",
-            color: "#0d0d0d",
-            border: "2px solid #f5f5f5",
-            borderRadius: 4,
-            padding: 16,
-            marginBottom: 16,
-            fontWeight: 700,
-          }}
-        >
+        <div style={{ background: "#f2c14e", color: "#0d0d0d", border: "2px solid #f5f5f5", borderRadius: 4, padding: 16, marginBottom: 16, fontWeight: 700 }}>
           Nuevo match con {matchName}! <a href="/matches" style={{ textDecoration: "underline" }}>Ver chat</a>
           <button onClick={() => setMatchName(null)} style={{ float: "right", background: "none", border: "none", fontWeight: 700 }}>X</button>
         </div>
       )}
 
       {distanceCapped && (
-        <div
-          style={{
-            background: "#1e1e1e",
-            border: "1px solid #c9a24b",
-            borderRadius: 8,
-            padding: 14,
-            marginBottom: 16,
-            fontSize: 13,
-            color: "#f5f5f5",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
+        <div style={{ background: "#1e1e1e", border: "1px solid #c9a24b", borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 13, color: "#f5f5f5", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <span>Con la cuenta gratuita solo ves perfiles a menos de {FREE_MAX_DISTANCE_KM} km. Hay mas gente esperando un poco mas lejos.</span>
-          
-            href="/settings"
-            style={{
-              flexShrink: 0,
-              background: "#c9a24b",
-              color: "#1a1a1a",
-              fontWeight: 700,
-              padding: "6px 14px",
-              borderRadius: 8,
-              fontSize: 12,
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Hazte Premium
-          </a>
+          <a href="/settings" style={{ flexShrink: 0, background: "#c9a24b", color: "#1a1a1a", fontWeight: 700, padding: "6px 14px", borderRadius: 8, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>Hazte Premium</a>
         </div>
       )}
 
@@ -219,10 +180,7 @@ export default function SwipeDeck() {
             {current.tags?.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
                 {current.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    style={{ background: "#2a2a2a", color: "#f2c14e", fontSize: 12, padding: "4px 10px", borderRadius: 20 }}
-                  >
+                  <span key={tag} style={{ background: "#2a2a2a", color: "#f2c14e", fontSize: 12, padding: "4px 10px", borderRadius: 20 }}>
                     {tag}
                   </span>
                 ))}
@@ -238,21 +196,7 @@ export default function SwipeDeck() {
             </div>
           </div>
           <div style={{ display: "flex", justifyContent: "center", gap: 24, padding: 16, borderTop: "2px solid #2a2a2a" }}>
-            <button
-              onClick={() => handleSwipe("pass")}
-              style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #9a9a9a", background: "none", color: "#9a9a9a", fontSize: 20 }}
-            >
+            <button onClick={() => handleSwipe("pass")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #9a9a9a", background: "none", color: "#9a9a9a", fontSize: 20 }}>
               X
             </button>
-            <button
-              onClick={() => handleSwipe("like")}
-              style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #e8352b", background: "#e8352b", color: "#fff", fontSize: 20 }}
-            >
-              Like
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+            <button onClick={()
