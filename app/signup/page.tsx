@@ -44,6 +44,9 @@ export default function Signup() {
       <p style={{ marginTop: 16, fontSize: 14, color: "#8a8378" }}>
         ¿Ya tienes cuenta? <a href="/login" style={{ color: "#f2c14e" }}>Inicia sesión</a>
       </p>
+      <p style={{ marginTop: 12, fontSize: 12, color: "#6a6a6a" }}>
+        Al crear una cuenta aceptas nuestra <a href="/legal" style={{ color: "#f2c14e" }}>Política de Privacidad y Términos</a>.
+      </p>
     </div>
   );
 }
