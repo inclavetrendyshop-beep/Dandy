@@ -13,6 +13,7 @@ type Profile = {
   photos: string[];
   lat: number | null;
   lng: number | null;
+  verification_status?: string;
 };
 
 const FREE_MAX_DISTANCE_KM = 5;
@@ -183,7 +184,14 @@ export default function SwipeDeck() {
             )}
           </div>
           <div style={{ padding: 16 }}>
-            <p style={{ fontSize: 20, fontWeight: 700 }}>{current.name}, {current.age}</p>
+            <p style={{ fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+              {current.name}, {current.age}
+              {current.verification_status === "approved" && (
+                <span title="Perfil verificado" style={{ background: "#1e6fd9", color: "#fff", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+                  Verificado ✓
+                </span>
+              )}
+            </p>
             <p style={{ fontSize: 13, color: "#9a9a9a" }}>{current.city}</p>
             <p style={{ marginTop: 8 }}>{current.bio}</p>
             {current.tags?.length > 0 && (
