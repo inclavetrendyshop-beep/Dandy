@@ -100,6 +100,15 @@ export default function SwipeDeck() {
         .maybeSingle();
       if (theirSwipe) {
         setMatchName(target.name);
+        const orFilter = "and(user1_id.eq." + me.id + ",user2_id.eq." + target.id + "),and(user1_id.eq." + target.id + ",user2_id.eq." + me.id + ")";
+        const { data: existingMatch } = await supabase
+          .from("matches")
+          .select("id")
+          .or(orFilter)
+          .maybeSingle();
+        if (!existingMatch) {
+          await supabase.from("matches").insert({ user1_id: me.id, user2_id: target.id });
+        }
       }
     }
     setDeck((d) => d.slice(1));
@@ -198,8 +207,8 @@ export default function SwipeDeck() {
           <div style={{ display: "flex", justifyContent: "center", gap: 24, padding: 16, borderTop: "2px solid #2a2a2a" }}>
             <button onClick={() => handleSwipe("pass")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #9a9a9a", background: "none", color: "#9a9a9a", fontSize: 20 }}>
               X
-              </button>
-              <button onClick={() => handleSwipe("like")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #e8352b", background: "#e8352b", color: "#fff", fontSize: 20 }}>
+            </button>
+            <button onClick={() => handleSwipe("like")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #e8352b", background: "#e8352b", color: "#fff", fontSize: 20 }}>
               Like
             </button>
           </div>
@@ -208,4 +217,3 @@ export default function SwipeDeck() {
     </div>
   );
 }
-           
