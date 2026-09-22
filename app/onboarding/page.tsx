@@ -57,6 +57,13 @@ export default function Onboarding() {
     setRole((prev) => (prev === option ? null : option));
   }
 
+  const [healthStatus, setHealthStatus] = useState<string | null>(null);
+  const HEALTH_OPTIONS = ["VIH+", "VIH-", "Tomo PrEP", "Prefiero no decirlo"];
+
+  function selectHealth(option: string) {
+    setHealthStatus((prev) => (prev === option ? null : option));
+  }
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -107,6 +114,7 @@ export default function Onboarding() {
       city,
       tags,
       role,
+      health_status: healthStatus,
       photos: photoUrls,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
@@ -189,6 +197,27 @@ export default function Onboarding() {
                 border: "2px solid " + (role === option ? "#c9a24b" : "#2a2a2a"),
                 background: role === option ? "#c9a24b" : "transparent",
                 color: role === option ? "#1a1a1a" : "#f5f5f5",
+                fontSize: 13,
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+
+        <label style={{ fontSize: 13, color: "#9a9a9a" }}>Estado serológico (opcional)</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {HEALTH_OPTIONS.map((option) => (
+            <button
+              type="button"
+              key={option}
+              onClick={() => selectHealth(option)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 20,
+                border: "2px solid " + (healthStatus === option ? "#1e6fd9" : "#2a2a2a"),
+                background: healthStatus === option ? "#1e6fd9" : "transparent",
+                color: "#f5f5f5",
                 fontSize: 13,
               }}
             >
