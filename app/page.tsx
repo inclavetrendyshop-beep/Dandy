@@ -14,6 +14,7 @@ type Profile = {
   lat: number | null;
   lng: number | null;
   verification_status?: string;
+  age_verification_status?: string;
 };
 
 const FREE_MAX_DISTANCE_KM = 5;
@@ -184,11 +185,16 @@ export default function SwipeDeck() {
             )}
           </div>
           <div style={{ padding: 16 }}>
-            <p style={{ fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+            <p style={{ fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               {current.name}, {current.age}
               {current.verification_status === "approved" && (
                 <span title="Perfil verificado" style={{ background: "#1e6fd9", color: "#fff", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
                   Verificado ✓
+                </span>
+              )}
+              {current.age_verification_status === "approved" && (
+                <span title="Edad verificada" style={{ background: "#4bc97a", color: "#0a0a0a", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+                  Edad verificada ✓
                 </span>
               )}
             </p>
