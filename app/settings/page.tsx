@@ -3,9 +3,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+const ADMIN_EMAIL = "inclavetrendyshop@gmail.com";
+
 export default function Settings() {
   const router = useRouter();
   const [me, setMe] = useState<any>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [minAge, setMinAge] = useState(18);
   const [maxAge, setMaxAge] = useState(60);
   const [maxDistance, setMaxDistance] = useState(5);
@@ -25,6 +28,7 @@ export default function Settings() {
       router.push("/login");
       return;
     }
+    setUserEmail(userData.user.email ?? null);
     const { data: myProfile } = await supabase.from("profiles").select("*").eq("id", userData.user.id).single();
     if (!myProfile) {
       router.push("/onboarding");
@@ -122,6 +126,26 @@ export default function Settings() {
         <span className="brand" style={{ fontSize: 24, color: "#e8352b" }}>Dandy</span>
         <a href="/" style={{ color: "#f5f5f5" }}>Volver</a>
       </div>
+
+      {userEmail === ADMIN_EMAIL && (
+        
+          href="/admin/verificaciones"
+          style={{
+            display: "block",
+            textAlign: "center",
+            width: "100%",
+            padding: 12,
+            borderRadius: 8,
+            border: "1px solid #1e6fd9",
+            color: "#1e6fd9",
+            marginBottom: 24,
+            fontWeight: 700,
+            textDecoration: "none",
+          }}
+        >
+          Panel de administracion
+        </a>
+      )}
 
       <h2 style={{ fontSize: 18, marginBottom: 16 }}>Filtros de busqueda</h2>
 
