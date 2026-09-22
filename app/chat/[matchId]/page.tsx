@@ -9,6 +9,7 @@ export default function Chat() {
   const [myId, setMyId] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [text, setText] = useState("");
+  const [uploading, setUploading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,6 +58,25 @@ export default function Chat() {
     setText("");
   }
 
+  async function handleSendPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !myId) return;
+    setUploading(true);
+
+    const path = `chat/${matchId}/${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from("photos").upload(path, file);
+    if (upErr) {
+      alert("Error subiendo la foto: " + upErr.message);
+      setUploading(false);
+      return;
+    }
+    const { data } = supabase.storage.from("photos").getPublicUrl(path);
+
+    await supabase.from("messages").insert({ match_id: Number(matchId), sender_id: myId, image_url: data.publicUrl });
+    setUploading(false);
+    e.target.value = "";
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, borderBottom: "2px solid #2a2a2a" }}>
@@ -72,17 +92,25 @@ export default function Chat() {
               border: "2px solid " + (m.sender_id === myId ? "#e8352b" : "#2a2a2a"),
               color: "#f5f5f5",
               borderRadius: 12,
-              padding: "8px 14px",
+              padding: m.image_url ? 6 : "8px 14px",
               maxWidth: "75%",
             }}
           >
-            {m.content}
+            {m.image_url ? (
+              <img src={m.image_url} alt="Foto" style={{ maxWidth: "100%", borderRadius: 8, display: "block" }} />
+            ) : (
+              m.content
+            )}
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
       <form onSubmit={sendMessage} style={{ display: "flex", gap: 8, padding: 16, borderTop: "2px solid #2a2a2a" }}>
-        <input placeholder="Escribe un mensaje..." value={text} onChange={(e) => setText(e.target.value)} />
+        <label style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, borderRadius: 8, border: "1px solid #2a2a2a", cursor: "pointer", flexShrink: 0 }}>
+          {uploading ? "..." : "📷"}
+          <input type="file" accept="image/*" onChange={handleSendPhoto} disabled={uploading} style={{ display: "none" }} />
+        </label>
+        <input placeholder="Escribe un mensaje..." value={text} onChange={(e) => setText(e.target.value)} style={{ flex: 1 }} />
         <button className="primary" type="submit">Enviar</button>
       </form>
     </div>
