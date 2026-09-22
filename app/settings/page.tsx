@@ -127,25 +127,11 @@ export default function Settings() {
         <a href="/" style={{ color: "#f5f5f5" }}>Volver</a>
       </div>
 
-      {userEmail === ADMIN_EMAIL && (
-        
-          href="/admin/verificaciones"
-          style={{
-            display: "block",
-            textAlign: "center",
-            width: "100%",
-            padding: 12,
-            borderRadius: 8,
-            border: "1px solid #1e6fd9",
-            color: "#1e6fd9",
-            marginBottom: 24,
-            fontWeight: 700,
-            textDecoration: "none",
-          }}
-        >
+      {userEmail === ADMIN_EMAIL ? (
+        <a href="/admin/verificaciones" style={{ display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #1e6fd9", color: "#1e6fd9", marginBottom: 24, fontWeight: 700, textDecoration: "none" }}>
           Panel de administracion
         </a>
-      )}
+      ) : null}
 
       <h2 style={{ fontSize: 18, marginBottom: 16 }}>Filtros de busqueda</h2>
 
