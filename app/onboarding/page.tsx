@@ -42,6 +42,23 @@ export default function Onboarding() {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
   }
 
+  const [gender, setGender] = useState<string | null>(null);
+  const GENDER_OPTIONS = [
+    "Hombre cisgenero",
+    "Hombre transgenero",
+    "Mujer transgenero",
+    "No binario",
+    "Genero fluido",
+    "Agenero",
+    "Intersexual",
+    "Otro",
+    "Prefiero no decirlo",
+  ];
+
+  function selectGender(option: string) {
+    setGender((prev) => (prev === option ? null : option));
+  }
+
   const [role, setRole] = useState<string | null>(null);
   const ROLE_OPTIONS = [
     "Activo",
@@ -113,6 +130,7 @@ export default function Onboarding() {
       bio,
       city,
       tags,
+      gender,
       role,
       health_status: healthStatus,
       photos: photoUrls,
@@ -141,6 +159,27 @@ export default function Onboarding() {
         <input type="number" placeholder="Edad" min={18} value={age} onChange={(e) => setAge(e.target.value)} required />
         <input placeholder="Ciudad" value={city} onChange={(e) => setCity(e.target.value)} required />
         <textarea placeholder="Cuéntanos sobre ti" rows={3} value={bio} onChange={(e) => setBio(e.target.value)} />
+
+        <label style={{ fontSize: 13, color: "#9a9a9a" }}>Genero</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {GENDER_OPTIONS.map((option) => (
+            <button
+              type="button"
+              key={option}
+              onClick={() => selectGender(option)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 20,
+                border: "2px solid " + (gender === option ? "#c9a24b" : "#2a2a2a"),
+                background: gender === option ? "#c9a24b" : "transparent",
+                color: gender === option ? "#1a1a1a" : "#f5f5f5",
+                fontSize: 13,
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
 
         <label style={{ fontSize: 13, color: "#9a9a9a" }}>¿Cómo te describes?</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
