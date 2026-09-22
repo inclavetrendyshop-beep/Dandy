@@ -17,6 +17,8 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState("");
+  const [ageVerifying, setAgeVerifying] = useState(false);
+  const [ageVerifyError, setAgeVerifyError] = useState("");
 
   useEffect(() => {
     load();
@@ -87,6 +89,36 @@ export default function Settings() {
 
     setMe({ ...me, verification_status: "pending", verification_photo_url: data.publicUrl });
     setVerifying(false);
+  }
+
+  async function handleAgeVerifyUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !me) return;
+    setAgeVerifying(true);
+    setAgeVerifyError("");
+
+    const path = `${me.id}/age-${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from("photos").upload(path, file);
+    if (upErr) {
+      setAgeVerifyError("Error subiendo el documento: " + upErr.message);
+      setAgeVerifying(false);
+      return;
+    }
+    const { data } = supabase.storage.from("photos").getPublicUrl(path);
+
+    const { error: dbErr } = await supabase.from("profiles").update({
+      age_verification_photo_url: data.publicUrl,
+      age_verification_status: "pending",
+    }).eq("id", me.id);
+
+    if (dbErr) {
+      setAgeVerifyError("Error guardando la verificacion: " + dbErr.message);
+      setAgeVerifying(false);
+      return;
+    }
+
+    setMe({ ...me, age_verification_status: "pending", age_verification_photo_url: data.publicUrl });
+    setAgeVerifying(false);
   }
 
   async function handleDeleteAccount() {
@@ -186,6 +218,35 @@ export default function Settings() {
               <input type="file" accept="image/*" onChange={handleVerifyUpload} disabled={verifying} style={{ display: "none" }} />
             </label>
             {verifyError && <p style={{ fontSize: 12, color: "#e8352b", marginTop: 8 }}>{verifyError}</p>}
+          </>
+        )}
+      </div>
+
+      <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 24, marginBottom: 32 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Verificacion de edad</h3>
+
+        {me?.age_verification_status === "approved" && (
+          <p style={{ fontSize: 13, color: "#4bc97a", marginBottom: 8 }}>✓ Tu edad esta verificada.</p>
+        )}
+
+        {me?.age_verification_status === "pending" && (
+          <p style={{ fontSize: 13, color: "#c9a24b", marginBottom: 8 }}>Tu documento esta en revision. Te avisaremos cuando se apruebe.</p>
+        )}
+
+        {me?.age_verification_status === "rejected" && (
+          <p style={{ fontSize: 13, color: "#e8352b", marginBottom: 8 }}>Tu documento fue rechazado. Puedes intentarlo de nuevo.</p>
+        )}
+
+        {(!me?.age_verification_status || me?.age_verification_status === "none" || me?.age_verification_status === "rejected") && (
+          <>
+            <p style={{ fontSize: 12, color: "#9a9a9a", marginBottom: 12 }}>
+              Sube una foto de tu documento de identidad (DNI o pasaporte) para confirmar que tienes al menos 18 anos. Solo lo vera un administrador para revisarlo, y se usa unicamente para verificar tu edad.
+            </p>
+            <label style={{ display: "block", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #2a2a2a", background: "none", color: "#f5f5f5", textAlign: "center", cursor: "pointer" }}>
+              {ageVerifying ? "Subiendo..." : "Subir documento de identidad"}
+              <input type="file" accept="image/*" onChange={handleAgeVerifyUpload} disabled={ageVerifying} style={{ display: "none" }} />
+            </label>
+            {ageVerifyError && <p style={{ fontSize: 12, color: "#e8352b", marginTop: 8 }}>{ageVerifyError}</p>}
           </>
         )}
       </div>
