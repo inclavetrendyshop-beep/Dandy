@@ -19,6 +19,9 @@ export default function Settings() {
   const [verifyError, setVerifyError] = useState("");
   const [ageVerifying, setAgeVerifying] = useState(false);
   const [ageVerifyError, setAgeVerifyError] = useState("");
+  const [privatePhotos, setPrivatePhotos] = useState<any[]>([]);
+  const [uploadingPrivate, setUploadingPrivate] = useState(false);
+  const [privatePhotoError, setPrivatePhotoError] = useState("");
 
   useEffect(() => {
     load();
@@ -40,6 +43,14 @@ export default function Settings() {
     setMinAge(myProfile.pref_min_age || 18);
     setMaxAge(myProfile.pref_max_age || 60);
     setMaxDistance(myProfile.pref_max_distance || 5);
+
+    const { data: photos } = await supabase
+      .from("private_photos")
+      .select("*")
+      .eq("user_id", myProfile.id)
+      .order("created_at", { ascending: false });
+    setPrivatePhotos(photos || []);
+
     setLoading(false);
   }
 
@@ -121,6 +132,45 @@ export default function Settings() {
     setAgeVerifying(false);
   }
 
+  async function handleUploadPrivatePhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !me) return;
+    setUploadingPrivate(true);
+    setPrivatePhotoError("");
+
+    const path = `${me.id}/private-${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from("photos").upload(path, file);
+    if (upErr) {
+      setPrivatePhotoError("Error subiendo la foto: " + upErr.message);
+      setUploadingPrivate(false);
+      return;
+    }
+    const { data } = supabase.storage.from("photos").getPublicUrl(path);
+
+    const { data: inserted, error: dbErr } = await supabase
+      .from("private_photos")
+      .insert({ user_id: me.id, url: data.publicUrl })
+      .select()
+      .single();
+
+    if (dbErr) {
+      setPrivatePhotoError("Error guardando la foto: " + dbErr.message);
+      setUploadingPrivate(false);
+      return;
+    }
+
+    setPrivatePhotos((prev) => [inserted, ...prev]);
+    setUploadingPrivate(false);
+    e.target.value = "";
+  }
+
+  async function handleDeletePrivatePhoto(id: number) {
+    const sure = confirm("Borrar esta foto privada?");
+    if (!sure) return;
+    await supabase.from("private_photos").delete().eq("id", id);
+    setPrivatePhotos((prev) => prev.filter((p) => p.id !== id));
+  }
+
   async function handleDeleteAccount() {
     const sure = confirm("Seguro que quieres borrar tu cuenta? Se borraran tu perfil, tus matches y tus mensajes. Esta accion no se puede deshacer.");
     if (!sure) return;
@@ -192,6 +242,35 @@ export default function Settings() {
       <button onClick={handleLogout} style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #2a2a2a", background: "none", color: "#f5f5f5", marginBottom: 32 }}>
         Cerrar sesion
       </button>
+
+      <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 24, marginBottom: 32 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Fotos privadas</h3>
+        <p style={{ fontSize: 12, color: "#9a9a9a", marginBottom: 12 }}>
+          Estas fotos no se ven en tu perfil. Solo las vera alguien si tu decides compartirlas con esa persona desde el chat.
+        </p>
+
+        {privatePhotos.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
+            {privatePhotos.map((p) => (
+              <div key={p.id} style={{ position: "relative" }}>
+                <img src={p.url} alt="Privada" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #2a2a2a" }} />
+                <button
+                  onClick={() => handleDeletePrivatePhoto(p.id)}
+                  style={{ position: "absolute", top: 4, right: 4, background: "#0d0d0d", border: "1px solid #e8352b", color: "#e8352b", borderRadius: 6, fontSize: 11, padding: "2px 6px", cursor: "pointer" }}
+                >
+                  Borrar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <label style={{ display: "block", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #2a2a2a", background: "none", color: "#f5f5f5", textAlign: "center", cursor: "pointer" }}>
+          {uploadingPrivate ? "Subiendo..." : "Anadir foto privada"}
+          <input type="file" accept="image/*" onChange={handleUploadPrivatePhoto} disabled={uploadingPrivate} style={{ display: "none" }} />
+        </label>
+        {privatePhotoError && <p style={{ fontSize: 12, color: "#e8352b", marginTop: 8 }}>{privatePhotoError}</p>}
+      </div>
 
       <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 24, marginBottom: 32 }}>
         <h3 style={{ fontSize: 14, marginBottom: 8 }}>Verificacion de perfil</h3>
