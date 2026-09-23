@@ -1,27 +1,54 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase, distanceKm } from "@/lib/supabase";
 
-const ADMIN_EMAIL = "inclavetrendyshop@gmail.com";
+type Profile = {
+  id: string;
+  name: string;
+  age: number;
+  bio: string;
+  city: string;
+  tags: string[];
+  photos: string[];
+  lat: number | null;
+  lng: number | null;
+  role?: string;
+  verification_status?: string;
+  age_verification_status?: string;
+  match_reveal_photo_url?: string;
+  last_active_at?: string;
+  looking_now?: boolean;
+};
 
-export default function Settings() {
+const FREE_MAX_DISTANCE_KM = 5;
+const ONLINE_WINDOW_MINUTES = 15;
+
+const ROLE_FILTER_OPTIONS = ["Activo", "Pasivo", "Versatil", "Versatil Activo", "Versatil Pasivo", "Neutro"];
+const TAG_FILTER_OPTIONS = [
+  "Barba", "Canas", "Elegante", "Clasico", "Ejecutivo", "Viajero",
+  "Oso", "Nutria", "Cachorro", "Lobo", "Musculoso", "Deportista",
+  "Militar", "Cuero", "Geek", "Daddy", "Twink", "Friki",
+  "Sobrio", "Discreto", "Poz", "Indetectable", "Fetiche", "Asexual",
+  "Vicio", "Sexo casual",
+];
+
+export default function SwipeDeck() {
   const router = useRouter();
   const [me, setMe] = useState<any>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [minAge, setMinAge] = useState(18);
-  const [maxAge, setMaxAge] = useState(60);
-  const [maxDistance, setMaxDistance] = useState(5);
+  const [deck, setDeck] = useState<Profile[]>([]);
+  const [matchName, setMatchName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [verifyError, setVerifyError] = useState("");
-  const [ageVerifying, setAgeVerifying] = useState(false);
-  const [ageVerifyError, setAgeVerifyError] = useState("");
-  const [privatePhotos, setPrivatePhotos] = useState<any[]>([]);
-  const [uploadingPrivate, setUploadingPrivate] = useState(false);
-  const [privatePhotoError, setPrivatePhotoError] = useState("");
+  const [distanceCapped, setDistanceCapped] = useState(false);
+  const [togglingLookingNow, setTogglingLookingNow] = useState(false);
+
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterName, setFilterName] = useState("");
+  const [filterRole, setFilterRole] = useState("Todos");
+  const [filterTag, setFilterTag] = useState("Todos");
+  const [onlyOnline, setOnlyOnline] = useState(false);
+  const [onlyLookingNow, setOnlyLookingNow] = useState(false);
+  const [sortNearest, setSortNearest] = useState(false);
 
   useEffect(() => {
     load();
@@ -33,310 +60,312 @@ export default function Settings() {
       router.push("/login");
       return;
     }
-    setUserEmail(userData.user.email ?? null);
     const { data: myProfile } = await supabase.from("profiles").select("*").eq("id", userData.user.id).single();
     if (!myProfile) {
       router.push("/onboarding");
       return;
     }
     setMe(myProfile);
-    setMinAge(myProfile.pref_min_age || 18);
-    setMaxAge(myProfile.pref_max_age || 60);
-    setMaxDistance(myProfile.pref_max_distance || 5);
 
-    const { data: photos } = await supabase
-      .from("private_photos")
+    await supabase.from("profiles").update({ last_active_at: new Date().toISOString() }).eq("id", myProfile.id);
+
+    const { data: swiped } = await supabase.from("swipes").select("swiped_id").eq("swiper_id", myProfile.id);
+    const swipedIds = (swiped || []).map((s) => s.swiped_id);
+
+    const { data: blocked } = await supabase
+      .from("blocks")
+      .select("blocker_id, blocked_id")
+      .or(`blocker_id.eq.${myProfile.id},blocked_id.eq.${myProfile.id}`);
+    const blockedIds = (blocked || []).map((b) =>
+      b.blocker_id === myProfile.id ? b.blocked_id : b.blocker_id
+    );
+
+    let query = supabase
+      .from("profiles")
       .select("*")
-      .eq("user_id", myProfile.id)
-      .order("created_at", { ascending: false });
-    setPrivatePhotos(photos || []);
+      .neq("id", myProfile.id)
+      .gte("age", myProfile.pref_min_age)
+      .lte("age", myProfile.pref_max_age);
 
+    const { data: candidates } = await query;
+
+    const isPremium = !!myProfile.is_premium;
+    const preferredMax = myProfile.pref_max_distance ?? FREE_MAX_DISTANCE_KM;
+    const effectiveMaxDistance = isPremium ? preferredMax : Math.min(preferredMax, FREE_MAX_DISTANCE_KM);
+    let cappedSomeone = false;
+
+    const filtered = (candidates || []).filter((c) => {
+      if (swipedIds.includes(c.id)) return false;
+      if (blockedIds.includes(c.id)) return false;
+      if (myProfile.lat && myProfile.lng && c.lat && c.lng) {
+        const d = distanceKm(myProfile.lat, myProfile.lng, c.lat, c.lng);
+        if (d > effectiveMaxDistance) {
+          if (!isPremium && d <= preferredMax) cappedSomeone = true;
+          return false;
+        }
+      }
+      return true;
+    });
+
+    setDistanceCapped(!isPremium && cappedSomeone);
+    setDeck(filtered);
     setLoading(false);
   }
 
-  async function handleSave() {
-    if (!me) return;
-    setSaving(true);
-    await supabase.from("profiles").update({
-      pref_min_age: minAge,
-      pref_max_age: maxAge,
-      pref_max_distance: maxDistance,
-    }).eq("id", me.id);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  function isOnline(p: Profile) {
+    if (!p.last_active_at) return false;
+    const diffMin = (Date.now() - new Date(p.last_active_at).getTime()) / 60000;
+    return diffMin <= ONLINE_WINDOW_MINUTES;
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
-
-  async function handleVerifyUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !me) return;
-    setVerifying(true);
-    setVerifyError("");
-
-    const path = `${me.id}/verify-${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("photos").upload(path, file);
-    if (upErr) {
-      setVerifyError("Error subiendo la foto: " + upErr.message);
-      setVerifying(false);
-      return;
-    }
-    const { data } = supabase.storage.from("photos").getPublicUrl(path);
-
-    const { error: dbErr } = await supabase.from("profiles").update({
-      verification_photo_url: data.publicUrl,
-      verification_status: "pending",
-    }).eq("id", me.id);
-
-    if (dbErr) {
-      setVerifyError("Error guardando la verificacion: " + dbErr.message);
-      setVerifying(false);
-      return;
-    }
-
-    setMe({ ...me, verification_status: "pending", verification_photo_url: data.publicUrl });
-    setVerifying(false);
-  }
-
-  async function handleAgeVerifyUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !me) return;
-    setAgeVerifying(true);
-    setAgeVerifyError("");
-
-    const path = `${me.id}/age-${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("photos").upload(path, file);
-    if (upErr) {
-      setAgeVerifyError("Error subiendo el documento: " + upErr.message);
-      setAgeVerifying(false);
-      return;
-    }
-    const { data } = supabase.storage.from("photos").getPublicUrl(path);
-
-    const { error: dbErr } = await supabase.from("profiles").update({
-      age_verification_photo_url: data.publicUrl,
-      age_verification_status: "pending",
-    }).eq("id", me.id);
-
-    if (dbErr) {
-      setAgeVerifyError("Error guardando la verificacion: " + dbErr.message);
-      setAgeVerifying(false);
-      return;
-    }
-
-    setMe({ ...me, age_verification_status: "pending", age_verification_photo_url: data.publicUrl });
-    setAgeVerifying(false);
-  }
-
-  async function handleUploadPrivatePhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !me) return;
-    setUploadingPrivate(true);
-    setPrivatePhotoError("");
-
-    const path = `${me.id}/private-${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("photos").upload(path, file);
-    if (upErr) {
-      setPrivatePhotoError("Error subiendo la foto: " + upErr.message);
-      setUploadingPrivate(false);
-      return;
-    }
-    const { data } = supabase.storage.from("photos").getPublicUrl(path);
-
-    const { data: inserted, error: dbErr } = await supabase
-      .from("private_photos")
-      .insert({ user_id: me.id, url: data.publicUrl })
-      .select()
-      .single();
-
-    if (dbErr) {
-      setPrivatePhotoError("Error guardando la foto: " + dbErr.message);
-      setUploadingPrivate(false);
-      return;
-    }
-
-    setPrivatePhotos((prev) => [inserted, ...prev]);
-    setUploadingPrivate(false);
-    e.target.value = "";
-  }
-
-  async function handleDeletePrivatePhoto(id: number) {
-    const sure = confirm("Borrar esta foto privada?");
-    if (!sure) return;
-    await supabase.from("private_photos").delete().eq("id", id);
-    setPrivatePhotos((prev) => prev.filter((p) => p.id !== id));
-  }
-
-  async function handleDeleteAccount() {
-    const sure = confirm("Seguro que quieres borrar tu cuenta? Se borraran tu perfil, tus matches y tus mensajes. Esta accion no se puede deshacer.");
-    if (!sure) return;
-    const sureAgain = confirm("Ultima confirmacion: tu cuenta se borrara para siempre. Continuar?");
-    if (!sureAgain) return;
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) {
-      alert("Hubo un error, vuelve a iniciar sesion e intentalo de nuevo.");
-      return;
-    }
-
-    const res = await fetch("/api/delete-account", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + token },
+  function getVisibleDeck() {
+    let out = deck.filter((p) => {
+      if (filterName.trim() && !p.name?.toLowerCase().includes(filterName.trim().toLowerCase())) return false;
+      if (filterRole !== "Todos" && p.role !== filterRole) return false;
+      if (filterTag !== "Todos" && !(p.tags || []).includes(filterTag)) return false;
+      if (onlyOnline && !isOnline(p)) return false;
+      if (onlyLookingNow && !p.looking_now) return false;
+      return true;
     });
 
-    if (res.ok) {
-      alert("Tu cuenta ha sido borrada.");
-      await supabase.auth.signOut();
-      router.push("/login");
-    } else {
-      alert("Hubo un error al borrar la cuenta. Intentalo de nuevo.");
+    if (sortNearest && me?.lat && me?.lng) {
+      out = [...out].sort((a, b) => {
+        const da = a.lat && a.lng ? distanceKm(me.lat, me.lng, a.lat, a.lng) : Infinity;
+        const db = b.lat && b.lng ? distanceKm(me.lat, me.lng, b.lat, b.lng) : Infinity;
+        return da - db;
+      });
     }
+
+    return out;
+  }
+
+  function clearFilters() {
+    setFilterName("");
+    setFilterRole("Todos");
+    setFilterTag("Todos");
+    setOnlyOnline(false);
+    setOnlyLookingNow(false);
+    setSortNearest(false);
+  }
+
+  async function handleToggleLookingNow() {
+    if (!me) return;
+    setTogglingLookingNow(true);
+    const next = !me.looking_now;
+    await supabase
+      .from("profiles")
+      .update({ looking_now: next, looking_now_at: next ? new Date().toISOString() : null })
+      .eq("id", me.id);
+    setMe({ ...me, looking_now: next });
+    setTogglingLookingNow(false);
+  }
+
+  async function handleSwipe(action: "like" | "pass") {
+    if (!me) return;
+    const target = getVisibleDeck()[0];
+    if (!target) return;
+    await supabase.from("swipes").insert({ swiper_id: me.id, swiped_id: target.id, action });
+
+    if (action === "like") {
+      const { data: theirSwipe } = await supabase
+        .from("swipes")
+        .select("*")
+        .eq("swiper_id", target.id)
+        .eq("swiped_id", me.id)
+        .eq("action", "like")
+        .maybeSingle();
+      if (theirSwipe) {
+        setMatchName(target.name);
+        const orFilter = "and(user1_id.eq." + me.id + ",user2_id.eq." + target.id + "),and(user1_id.eq." + target.id + ",user2_id.eq." + me.id + ")";
+        const { data: existingMatch } = await supabase
+          .from("matches")
+          .select("id")
+          .or(orFilter)
+          .maybeSingle();
+        if (!existingMatch) {
+          const { data: newMatch } = await supabase
+            .from("matches")
+            .insert({ user1_id: me.id, user2_id: target.id })
+            .select()
+            .single();
+
+          if (newMatch) {
+            if (me.match_reveal_photo_url) {
+              await supabase.from("messages").insert({
+                match_id: newMatch.id,
+                sender_id: me.id,
+                image_url: me.match_reveal_photo_url,
+              });
+            }
+            if (target.match_reveal_photo_url) {
+              await supabase.from("messages").insert({
+                match_id: newMatch.id,
+                sender_id: target.id,
+                image_url: target.match_reveal_photo_url,
+              });
+            }
+          }
+        }
+      }
+    }
+    setDeck((d) => d.filter((p) => p.id !== target.id));
+  }
+
+  async function handleBlock() {
+    if (!me) return;
+    const target = getVisibleDeck()[0];
+    if (!target) return;
+    if (!confirm("Bloquear a " + target.name + "? No volveras a ver este perfil.")) return;
+    await supabase.from("blocks").insert({ blocker_id: me.id, blocked_id: target.id });
+    setDeck((d) => d.filter((p) => p.id !== target.id));
+  }
+
+  async function handleReport() {
+    if (!me) return;
+    const target = getVisibleDeck()[0];
+    if (!target) return;
+    const reason = prompt("Por que quieres denunciar a " + target.name + "? (breve motivo)");
+    if (reason === null) return;
+    await supabase.from("reports").insert({ reporter_id: me.id, reported_id: target.id, reason });
+    await supabase.from("blocks").insert({ blocker_id: me.id, blocked_id: target.id });
+    alert("Gracias, hemos recibido tu denuncia.");
+    setDeck((d) => d.filter((p) => p.id !== target.id));
   }
 
   if (loading) {
     return <div style={{ padding: 24, color: "#9a9a9a" }}>Cargando...</div>;
   }
 
+  const visibleDeck = getVisibleDeck();
+  const current = visibleDeck[0];
+  const filtersActive = filterName || filterRole !== "Todos" || filterTag !== "Todos" || onlyOnline || onlyLookingNow || sortNearest;
+
   return (
-    <div style={{ padding: 16, maxWidth: 480, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <span className="brand" style={{ fontSize: 24, color: "#e8352b" }}>Dandy</span>
-        <a href="/" style={{ color: "#f5f5f5" }}>Volver</a>
+        <div style={{ display: "flex", gap: 16 }}>
+          <a href="/events" style={{ color: "#f5f5f5" }}>Eventos</a>
+          <a href="/matches" style={{ color: "#f5f5f5" }}>Matches</a>
+          <a href="/radio" style={{ color: "#f5f5f5" }}>Radio</a>
+          <a href="/settings" style={{ color: "#f5f5f5" }}>Filtros</a>
+        </div>
       </div>
 
-      {userEmail === ADMIN_EMAIL ? (
-        <a href="/admin/verificaciones" style={{ display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #1e6fd9", color: "#1e6fd9", marginBottom: 24, fontWeight: 700, textDecoration: "none" }}>
-          Panel de administracion
-        </a>
-      ) : null}
-
-      <h2 style={{ fontSize: 18, marginBottom: 16 }}>Filtros de busqueda</h2>
-
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: "block", fontSize: 13, color: "#9a9a9a", marginBottom: 6 }}>Edad minima</label>
-        <input type="number" value={minAge} onChange={(e) => setMinAge(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #2a2a2a", background: "#171717", color: "#f5f5f5" }} />
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: "block", fontSize: 13, color: "#9a9a9a", marginBottom: 6 }}>Edad maxima</label>
-        <input type="number" value={maxAge} onChange={(e) => setMaxAge(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #2a2a2a", background: "#171717", color: "#f5f5f5" }} />
-      </div>
-
-      <div style={{ marginBottom: 24 }}>
-        <label style={{ display: "block", fontSize: 13, color: "#9a9a9a", marginBottom: 6 }}>Distancia maxima (km)</label>
-        <input type="number" value={maxDistance} onChange={(e) => setMaxDistance(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #2a2a2a", background: "#171717", color: "#f5f5f5" }} />
-        {!me?.is_premium && (
-          <p style={{ fontSize: 12, color: "#c9a24b", marginTop: 6 }}>Con cuenta gratuita el limite real son 5 km, aunque pongas mas.</p>
-        )}
-      </div>
-
-      <button onClick={handleSave} style={{ width: "100%", padding: 12, borderRadius: 8, border: "none", background: "#e8352b", color: "#fff", fontWeight: 700, marginBottom: 12 }}>
-        {saving ? "Guardando..." : saved ? "Guardado!" : "Guardar filtros"}
-      </button>
-
-      <button onClick={handleLogout} style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #2a2a2a", background: "none", color: "#f5f5f5", marginBottom: 32 }}>
-        Cerrar sesion
-      </button>
-
-      <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 24, marginBottom: 32 }}>
-        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Fotos privadas</h3>
-        <p style={{ fontSize: 12, color: "#9a9a9a", marginBottom: 12 }}>
-          Estas fotos no se ven en tu perfil. Solo las vera alguien si tu decides compartirlas con esa persona desde el chat.
-        </p>
-
-        {privatePhotos.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
-            {privatePhotos.map((p) => (
-              <div key={p.id} style={{ position: "relative" }}>
-                <img src={p.url} alt="Privada" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #2a2a2a" }} />
-                <button
-                  onClick={() => handleDeletePrivatePhoto(p.id)}
-                  style={{ position: "absolute", top: 4, right: 4, background: "#0d0d0d", border: "1px solid #e8352b", color: "#e8352b", borderRadius: 6, fontSize: 11, padding: "2px 6px", cursor: "pointer" }}
-                >
-                  Borrar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <label style={{ display: "block", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #2a2a2a", background: "none", color: "#f5f5f5", textAlign: "center", cursor: "pointer" }}>
-          {uploadingPrivate ? "Subiendo..." : "Anadir foto privada"}
-          <input type="file" accept="image/*" onChange={handleUploadPrivatePhoto} disabled={uploadingPrivate} style={{ display: "none" }} />
-        </label>
-        {privatePhotoError && <p style={{ fontSize: 12, color: "#e8352b", marginTop: 8 }}>{privatePhotoError}</p>}
-      </div>
-
-      <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 24, marginBottom: 32 }}>
-        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Verificacion de perfil</h3>
-
-        {me?.verification_status === "approved" && (
-          <p style={{ fontSize: 13, color: "#4bc97a", marginBottom: 8 }}>✓ Tu perfil esta verificado.</p>
-        )}
-
-        {me?.verification_status === "pending" && (
-          <p style={{ fontSize: 13, color: "#c9a24b", marginBottom: 8 }}>Tu foto esta en revision. Te avisaremos cuando se apruebe.</p>
-        )}
-
-        {me?.verification_status === "rejected" && (
-          <p style={{ fontSize: 13, color: "#e8352b", marginBottom: 8 }}>Tu foto de verificacion fue rechazada. Puedes intentarlo de nuevo con otra foto.</p>
-        )}
-
-        {(!me?.verification_status || me?.verification_status === "none" || me?.verification_status === "rejected") && (
-          <>
-            <p style={{ fontSize: 12, color: "#9a9a9a", marginBottom: 12 }}>
-              Sube una selfie clara de tu cara para verificar que tu perfil es real. Un administrador la revisara manualmente.
-            </p>
-            <label style={{ display: "block", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #2a2a2a", background: "none", color: "#f5f5f5", textAlign: "center", cursor: "pointer" }}>
-              {verifying ? "Subiendo..." : "Subir foto de verificacion"}
-              <input type="file" accept="image/*" onChange={handleVerifyUpload} disabled={verifying} style={{ display: "none" }} />
-            </label>
-            {verifyError && <p style={{ fontSize: 12, color: "#e8352b", marginTop: 8 }}>{verifyError}</p>}
-          </>
-        )}
-      </div>
-
-      <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 24, marginBottom: 32 }}>
-        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Verificacion de edad</h3>
-
-        {me?.age_verification_status === "approved" && (
-          <p style={{ fontSize: 13, color: "#4bc97a", marginBottom: 8 }}>✓ Tu edad esta verificada.</p>
-        )}
-
-        {me?.age_verification_status === "pending" && (
-          <p style={{ fontSize: 13, color: "#c9a24b", marginBottom: 8 }}>Tu documento esta en revision. Te avisaremos cuando se apruebe.</p>
-        )}
-
-        {me?.age_verification_status === "rejected" && (
-          <p style={{ fontSize: 13, color: "#e8352b", marginBottom: 8 }}>Tu documento fue rechazado. Puedes intentarlo de nuevo.</p>
-        )}
-
-        {(!me?.age_verification_status || me?.age_verification_status === "none" || me?.age_verification_status === "rejected") && (
-          <>
-            <p style={{ fontSize: 12, color: "#9a9a9a", marginBottom: 12 }}>
-              Sube una foto de tu documento de identidad (DNI o pasaporte) para confirmar que tienes al menos 18 anos. Solo lo vera un administrador para revisarlo, y se usa unicamente para verificar tu edad.
-            </p>
-            <label style={{ display: "block", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #2a2a2a", background: "none", color: "#f5f5f5", textAlign: "center", cursor: "pointer" }}>
-              {ageVerifying ? "Subiendo..." : "Subir documento de identidad"}
-              <input type="file" accept="image/*" onChange={handleAgeVerifyUpload} disabled={ageVerifying} style={{ display: "none" }} />
-            </label>
-            {ageVerifyError && <p style={{ fontSize: 12, color: "#e8352b", marginTop: 8 }}>{ageVerifyError}</p>}
-          </>
-        )}
-      </div>
-
-      <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 24 }}>
-        <h3 style={{ fontSize: 14, color: "#e8352b", marginBottom: 8 }}>Zona de peligro</h3>
-        <p style={{ fontSize: 12, color: "#9a9a9a", marginBottom: 12 }}>Borrar tu cuenta es permanente. Perderas tu perfil, matches y mensajes.</p>
-        <button onClick={handleDeleteAccount} style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #e8352b", background: "none", color: "#e8352b" }}>
-          Borrar mi cuenta
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          onClick={() => setShowFilters((v) => !v)}
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid " + (filtersActive ? "#f2c14e" : "#2a2a2a"),
+            background: "none",
+            color: filtersActive ? "#f2c14e" : "#f5f5f5",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {showFilters ? "Ocultar filtros" : "Filtros" + (filtersActive ? " (activos)" : "")}
+        </button>
+        <button
+          onClick={handleToggleLookingNow}
+          disabled={togglingLookingNow}
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid " + (me?.looking_now ? "#e8352b" : "#2a2a2a"),
+            background: me?.looking_now ? "#e8352b" : "none",
+            color: "#f5f5f5",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {me?.looking_now ? "🔥 Buscando ahora" : "Busco ahora"}
         </button>
       </div>
-    </div>
-  );
-}
+
+      {showFilters && (
+        <div style={{ border: "1px solid #2a2a2a", borderRadius: 8, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+          <input
+            placeholder="Buscar por nombre"
+            value={filterName}
+            onChange={(e) => setFilterName(e.target.value)}
+          />
+
+          <div>
+            <label style={{ display: "block", fontSize: 12, color: "#9a9a9a", marginBottom: 4 }}>Rol</label>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #2a2a2a", background: "#171717", color: "#f5f5f5" }}
+            >
+              <option value="Todos">Todos</option>
+              {ROLE_FILTER_OPTIONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: 12, color: "#9a9a9a", marginBottom: 4 }}>Etiqueta / tribu</label>
+            <select
+              value={filterTag}
+              onChange={(e) => setFilterTag(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #2a2a2a", background: "#171717", color: "#f5f5f5" }}
+            >
+              <option value="Todos">Todas</option>
+              {TAG_FILTER_OPTIONS.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={onlyOnline} onChange={(e) => setOnlyOnline(e.target.checked)} />
+            Solo conectados ahora
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={onlyLookingNow} onChange={(e) => setOnlyLookingNow(e.target.checked)} />
+            Solo quien busca ahora
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={sortNearest} onChange={(e) => setSortNearest(e.target.checked)} />
+            Ordenar por mas cercanos primero
+          </label>
+
+          {filtersActive && (
+            <button
+              onClick={clearFilters}
+              style={{ background: "none", border: "1px solid #9a9a9a", color: "#9a9a9a", borderRadius: 6, padding: 8, fontSize: 12, cursor: "pointer" }}
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+      )}
+
+      {matchName && (
+        <div style={{ background: "#f2c14e", color: "#0d0d0d", border: "2px solid #f5f5f5", borderRadius: 4, padding: 16, marginBottom: 16, fontWeight: 700 }}>
+          Nuevo match con {matchName}! <a href="/matches" style={{ textDecoration: "underline" }}>Ver chat</a>
+          <button onClick={() => setMatchName(null)} style={{ float: "right", background: "none", border: "none", fontWeight: 700 }}>X</button>
+        </div>
+      )}
+
+      {distanceCapped && (
+        <div style={{ background: "#1e1e1e", border: "1px solid #c9a24b", borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 13, color: "#f5f5f5", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <span>Con la cuenta gratuita solo ves perfiles a menos de {FREE_MAX_DISTANCE_KM} km. Hay mas gente esperando un poco mas lejos.</span>
+          <a href="/settings" style={{ flexShrink: 0, background: "#c9a24b", color: "#1a1a1a", fontWeight: 700, padding: "6px 14px", borderRadius: 8, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>Hazte Premium</a>
+        </div>
+      )}
+
+      {!current && (
+        <div style={{ padding: 40, textAlign: "center", color: "#9a9a9a" }}>
+          {deck.length === 0 ? "No hay mas perfiles por ahora. Ajusta tus filtros o vuelve mas tarde." : "Nadie coincide con estos filtros ahora mismo."}
+        </div>
+      )}
