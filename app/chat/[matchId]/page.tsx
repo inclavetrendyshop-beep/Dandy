@@ -22,7 +22,8 @@ export default function Chat() {
       router.push("/login");
       return;
     }
-    setMyId(userData.user.id);
+    const uid = userData.user.id;
+    setMyId(uid);
 
     const { data } = await supabase
       .from("messages")
@@ -31,6 +32,13 @@ export default function Chat() {
       .order("created_at", { ascending: true });
     setMessages(data || []);
 
+    await supabase
+      .from("messages")
+      .update({ read: true })
+      .eq("match_id", matchId)
+      .neq("sender_id", uid)
+      .eq("read", false);
+
     const channel = supabase
       .channel(`chat-${matchId}`)
       .on(
@@ -38,6 +46,9 @@ export default function Chat() {
         { event: "INSERT", schema: "public", table: "messages", filter: `match_id=eq.${matchId}` },
         (payload) => {
           setMessages((prev) => [...prev, payload.new]);
+          if (payload.new.sender_id !== uid) {
+            supabase.from("messages").update({ read: true }).eq("id", payload.new.id).then();
+          }
         }
       )
       .subscribe();
