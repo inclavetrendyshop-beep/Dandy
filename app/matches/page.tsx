@@ -43,6 +43,23 @@ export default function Matches() {
 
   if (loading) return <div style={{ padding: 24, color: "#9a9a9a" }}>Cargando...</div>;
 
+  function renderRow(m: any) {
+    const rowStyle = { display: "flex", alignItems: "center", gap: 12, padding: 12, border: "2px solid #2a2a2a", borderRadius: 4, color: "#f5f5f5", textDecoration: "none" };
+    return (
+      <a key={m.matchId} href={`/chat/${m.matchId}`} style={rowStyle}>
+        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#1e6fd9", overflow: "hidden", flexShrink: 0 }}>
+          {m.photo && <img src={m.photo} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+        </div>
+        <span style={{ fontWeight: 700, flex: 1 }}>{m.name}</span>
+        {m.unread > 0 && (
+          <span style={{ background: "#e8352b", color: "#fff", fontSize: 12, fontWeight: 700, minWidth: 20, height: 20, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 6px" }}>
+            {m.unread}
+          </span>
+        )}
+      </a>
+    );
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -51,32 +68,7 @@ export default function Matches() {
       </div>
       {matches.length === 0 && <p style={{ color: "#9a9a9a" }}>Todavía no tienes matches.</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {matches.map((m) => (
-          
-            key={m.matchId}
-            href={`/chat/${m.matchId}`}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: 12,
-              border: "2px solid #2a2a2a",
-              borderRadius: 4,
-              color: "#f5f5f5",
-              textDecoration: "none",
-            }}
-          >
-            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#1e6fd9", overflow: "hidden", flexShrink: 0 }}>
-              {m.photo && <img src={m.photo} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-            </div>
-            <span style={{ fontWeight: 700, flex: 1 }}>{m.name}</span>
-            {m.unread > 0 && (
-              <span style={{ background: "#e8352b", color: "#fff", fontSize: 12, fontWeight: 700, minWidth: 20, height: 20, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 6px" }}>
-                {m.unread}
-              </span>
-            )}
-          </a>
-        ))}
+        {matches.map((m) => renderRow(m))}
       </div>
     </div>
   );
