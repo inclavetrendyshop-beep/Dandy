@@ -1,3 +1,4 @@
+tsx
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -369,3 +370,72 @@ export default function SwipeDeck() {
           {deck.length === 0 ? "No hay mas perfiles por ahora. Ajusta tus filtros o vuelve mas tarde." : "Nadie coincide con estos filtros ahora mismo."}
         </div>
       )}
+
+      {current && (
+        <div style={{ border: "2px solid #f5f5f5", borderRadius: 8, overflow: "hidden", background: "#171717" }}>
+          <div style={{ height: 380, background: "#1e6fd9", position: "relative" }}>
+            {current.photos?.[0] ? (
+              <img src={current.photos[0]} alt={current.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#fff" }}>
+                Sin foto
+              </div>
+            )}
+            {isOnline(current) && (
+              <span style={{ position: "absolute", top: 10, left: 10, background: "#4bc97a", color: "#0a0a0a", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
+                ● Conectado
+              </span>
+            )}
+            {current.looking_now && (
+              <span style={{ position: "absolute", top: 10, right: 10, background: "#e8352b", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
+                🔥 Busca ahora
+              </span>
+            )}
+          </div>
+          <div style={{ padding: 16 }}>
+            <p style={{ fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {current.name}, {current.age}
+              {current.verification_status === "approved" && (
+                <span title="Perfil verificado" style={{ background: "#1e6fd9", color: "#fff", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+                  Verificado ✓
+                </span>
+              )}
+              {current.age_verification_status === "approved" && (
+                <span title="Edad verificada" style={{ background: "#4bc97a", color: "#0a0a0a", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+                  Edad verificada ✓
+                </span>
+              )}
+            </p>
+            <p style={{ fontSize: 13, color: "#9a9a9a" }}>{current.city}</p>
+            <p style={{ marginTop: 8 }}>{current.bio}</p>
+            {current.tags?.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                {current.tags.map((tag) => (
+                  <span key={tag} style={{ background: "#2a2a2a", color: "#f2c14e", fontSize: 12, padding: "4px 10px", borderRadius: 20 }}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
+              <button onClick={handleBlock} style={{ background: "none", border: "none", color: "#9a9a9a", fontSize: 12, cursor: "pointer", padding: 0 }}>
+                Bloquear
+              </button>
+              <button onClick={handleReport} style={{ background: "none", border: "none", color: "#9a9a9a", fontSize: 12, cursor: "pointer", padding: 0 }}>
+                Denunciar
+              </button>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 24, padding: 16, borderTop: "2px solid #2a2a2a" }}>
+            <button onClick={() => handleSwipe("pass")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #9a9a9a", background: "none", color: "#9a9a9a", fontSize: 20 }}>
+              X
+            </button>
+            <button onClick={() => handleSwipe("like")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #e8352b", background: "#e8352b", color: "#fff", fontSize: 20 }}>
+              Like
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
