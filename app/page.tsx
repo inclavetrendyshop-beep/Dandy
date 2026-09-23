@@ -15,6 +15,7 @@ type Profile = {
   lng: number | null;
   verification_status?: string;
   age_verification_status?: string;
+  match_reveal_photo_url?: string;
 };
 
 const FREE_MAX_DISTANCE_KM = 5;
@@ -109,7 +110,28 @@ export default function SwipeDeck() {
           .or(orFilter)
           .maybeSingle();
         if (!existingMatch) {
-          await supabase.from("matches").insert({ user1_id: me.id, user2_id: target.id });
+          const { data: newMatch } = await supabase
+            .from("matches")
+            .insert({ user1_id: me.id, user2_id: target.id })
+            .select()
+            .single();
+
+          if (newMatch) {
+            if (me.match_reveal_photo_url) {
+              await supabase.from("messages").insert({
+                match_id: newMatch.id,
+                sender_id: me.id,
+                image_url: me.match_reveal_photo_url,
+              });
+            }
+            if (target.match_reveal_photo_url) {
+              await supabase.from("messages").insert({
+                match_id: newMatch.id,
+                sender_id: target.id,
+                image_url: target.match_reveal_photo_url,
+              });
+            }
+          }
         }
       }
     }
