@@ -7,10 +7,15 @@ export default function Chat() {
   const { matchId } = useParams();
   const router = useRouter();
   const [myId, setMyId] = useState<string | null>(null);
+  const [otherId, setOtherId] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
+  const [hasPrivatePhotos, setHasPrivatePhotos] = useState(false);
+  const [iSharedMine, setISharedMine] = useState(false);
+  const [theirPrivatePhotos, setTheirPrivatePhotos] = useState<any[]>([]);
+  const [sharing, setSharing] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<any>(null);
   const typingTimeoutRef = useRef<any>(null);
@@ -29,6 +34,14 @@ export default function Chat() {
     const uid = userData.user.id;
     setMyId(uid);
 
+    const { data: match } = await supabase
+      .from("matches")
+      .select("user1_id, user2_id")
+      .eq("id", matchId)
+      .single();
+    const other = match ? (match.user1_id === uid ? match.user2_id : match.user1_id) : null;
+    setOtherId(other);
+
     const { data } = await supabase
       .from("messages")
       .select("*")
@@ -42,6 +55,10 @@ export default function Chat() {
       .eq("match_id", matchId)
       .neq("sender_id", uid)
       .eq("read", false);
+
+    if (other) {
+      loadPrivatePhotoState(uid, other);
+    }
 
     const channel = supabase
       .channel(`chat-${matchId}`, { config: { broadcast: { self: false } } })
@@ -75,6 +92,50 @@ export default function Chat() {
     return () => {
       supabase.removeChannel(channel);
     };
+  }
+
+  async function loadPrivatePhotoState(uid: string, other: string) {
+    const { count: myPrivateCount } = await supabase
+      .from("private_photos")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", uid);
+    setHasPrivatePhotos((myPrivateCount || 0) > 0);
+
+    const { data: myGrant } = await supabase
+      .from("private_photo_grants")
+      .select("id")
+      .eq("owner_id", uid)
+      .eq("viewer_id", other)
+      .maybeSingle();
+    setISharedMine(!!myGrant);
+
+    const { data: theirGrant } = await supabase
+      .from("private_photo_grants")
+      .select("id")
+      .eq("owner_id", other)
+      .eq("viewer_id", uid)
+      .maybeSingle();
+
+    if (theirGrant) {
+      const { data: photos } = await supabase
+        .from("private_photos")
+        .select("*")
+        .eq("user_id", other)
+        .order("created_at", { ascending: false });
+      setTheirPrivatePhotos(photos || []);
+    }
+  }
+
+  async function handleShareMyPrivatePhotos() {
+    if (!myId || !otherId) return;
+    const sure = confirm("Vas a dar acceso a esta persona a todas tus fotos privadas. Continuar?");
+    if (!sure) return;
+    setSharing(true);
+    await supabase
+      .from("private_photo_grants")
+      .upsert({ owner_id: myId, viewer_id: otherId, match_id: Number(matchId) }, { onConflict: "owner_id,viewer_id" });
+    setISharedMine(true);
+    setSharing(false);
   }
 
   useEffect(() => {
@@ -162,6 +223,33 @@ export default function Chat() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, borderBottom: "2px solid #2a2a2a" }}>
         <a href="/matches" style={{ color: "#f5f5f5" }}>← Volver</a>
       </div>
+
+      {(hasPrivatePhotos && !iSharedMine) || theirPrivatePhotos.length > 0 ? (
+        <div style={{ padding: "10px 16px", borderBottom: "1px solid #2a2a2a", display: "flex", flexDirection: "column", gap: 8 }}>
+          {hasPrivatePhotos && !iSharedMine && (
+            <button
+              onClick={handleShareMyPrivatePhotos}
+              disabled={sharing}
+              style={{ background: "none", border: "1px solid #c9a24b", color: "#c9a24b", borderRadius: 8, padding: "8px 12px", fontSize: 13, cursor: "pointer" }}
+            >
+              {sharing ? "Compartiendo..." : "Compartir mis fotos privadas con esta persona"}
+            </button>
+          )}
+          {theirPrivatePhotos.length > 0 && (
+            <div>
+              <p style={{ fontSize: 12, color: "#9a9a9a", marginBottom: 6 }}>Fotos privadas compartidas contigo:</p>
+              <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+                {theirPrivatePhotos.map((p) => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
+                    <img src={p.url} alt="Privada" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid #2a2a2a" }} />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
         {messages.map((m) => renderMessage(m))}
         {otherTyping && (
