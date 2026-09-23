@@ -1,4 +1,3 @@
-
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -249,6 +248,7 @@ export default function SwipeDeck() {
           <a href="/events" style={{ color: "#f5f5f5" }}>Eventos</a>
           <a href="/matches" style={{ color: "#f5f5f5" }}>Matches</a>
           <a href="/radio" style={{ color: "#f5f5f5" }}>Radio</a>
+          <a href="/travel" style={{ color: "#f5f5f5" }}>Viajar</a>
           <a href="/settings" style={{ color: "#f5f5f5" }}>Filtros</a>
         </div>
       </div>
@@ -439,3 +439,4 @@ export default function SwipeDeck() {
     </div>
   );
 }
+
