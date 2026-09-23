@@ -222,6 +222,10 @@ export default function Settings() {
         <a href="/" style={{ color: "#f5f5f5" }}>Volver</a>
       </div>
 
+      <a href="/edit-profile" style={{ display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #e8352b", color: "#e8352b", marginBottom: 12, fontWeight: 700, textDecoration: "none" }}>
+        Editar perfil
+      </a>
+
       {userEmail === ADMIN_EMAIL ? (
         <a href="/admin/verificaciones" style={{ display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #1e6fd9", color: "#1e6fd9", marginBottom: 24, fontWeight: 700, textDecoration: "none" }}>
           Panel de administracion
@@ -382,3 +386,4 @@ export default function Settings() {
     </div>
   );
 }
+
