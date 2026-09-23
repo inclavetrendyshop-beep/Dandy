@@ -1,258 +1,441 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase, distanceKm } from "@/lib/supabase";
 
-type CityOption = { name: string; lat: number; lng: number };
+type Profile = {
+  id: string;
+  name: string;
+  age: number;
+  bio: string;
+  city: string;
+  tags: string[];
+  photos: string[];
+  lat: number | null;
+  lng: number | null;
+  role?: string;
+  verification_status?: string;
+  age_verification_status?: string;
+  match_reveal_photo_url?: string;
+  last_active_at?: string;
+  looking_now?: boolean;
+};
 
-const FEATURED_CITIES: CityOption[] = [
-  { name: "Madrid", lat: 40.4168, lng: -3.7038 },
-  { name: "Barcelona", lat: 41.3874, lng: 2.1686 },
-  { name: "Ciudad de Mexico", lat: 19.4326, lng: -99.1332 },
-  { name: "Buenos Aires", lat: -34.6037, lng: -58.3816 },
-  { name: "Bogota", lat: 4.711, lng: -74.0721 },
-  { name: "Miami", lat: 25.7617, lng: -80.1918 },
-  { name: "Nueva York", lat: 40.7128, lng: -74.006 },
-  { name: "Los Angeles", lat: 34.0522, lng: -118.2437 },
-  { name: "Londres", lat: 51.5074, lng: -0.1278 },
-  { name: "Berlin", lat: 52.52, lng: 13.405 },
-  { name: "Amsterdam", lat: 52.3676, lng: 4.9041 },
-  { name: "Sao Paulo", lat: -23.5505, lng: -46.6333 },
+const FREE_MAX_DISTANCE_KM = 5;
+const ONLINE_WINDOW_MINUTES = 15;
+
+const ROLE_FILTER_OPTIONS = ["Activo", "Pasivo", "Versatil", "Versatil Activo", "Versatil Pasivo", "Neutro"];
+const TAG_FILTER_OPTIONS = [
+  "Barba", "Canas", "Elegante", "Clasico", "Ejecutivo", "Viajero",
+  "Oso", "Nutria", "Cachorro", "Lobo", "Musculoso", "Deportista",
+  "Militar", "Cuero", "Geek", "Daddy", "Twink", "Friki",
+  "Sobrio", "Discreto", "Poz", "Indetectable", "Fetiche", "Asexual",
+  "Vicio", "Sexo casual",
 ];
 
-declare global {
-  interface Window {
-    L: any;
-  }
-}
-
-export default function Travel() {
+export default function SwipeDeck() {
   const router = useRouter();
-  const mapDivRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
   const [me, setMe] = useState<any>(null);
+  const [deck, setDeck] = useState<Profile[]>([]);
+  const [matchName, setMatchName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mapReady, setMapReady] = useState(false);
-  const [selected, setSelected] = useState<CityOption | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [distanceCapped, setDistanceCapped] = useState(false);
+  const [togglingLookingNow, setTogglingLookingNow] = useState(false);
+
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterName, setFilterName] = useState("");
+  const [filterRole, setFilterRole] = useState("Todos");
+  const [filterTag, setFilterTag] = useState("Todos");
+  const [onlyOnline, setOnlyOnline] = useState(false);
+  const [onlyLookingNow, setOnlyLookingNow] = useState(false);
+  const [sortNearest, setSortNearest] = useState(false);
 
   useEffect(() => {
-    init();
+    load();
   }, []);
 
-  async function init() {
+  async function load() {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
       router.push("/login");
       return;
     }
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", userData.user.id).single();
-    if (!profile) {
+    const { data: myProfile } = await supabase.from("profiles").select("*").eq("id", userData.user.id).single();
+    if (!myProfile) {
       router.push("/onboarding");
       return;
     }
+    setMe(myProfile);
 
-    if (profile.home_lat == null || profile.home_lng == null) {
-      await supabase
-        .from("profiles")
-        .update({ home_lat: profile.lat, home_lng: profile.lng })
-        .eq("id", profile.id);
-      profile.home_lat = profile.lat;
-      profile.home_lng = profile.lng;
-    }
+    await supabase.from("profiles").update({ last_active_at: new Date().toISOString() }).eq("id", myProfile.id);
 
-    setMe(profile);
-    setLoading(false);
-    loadLeaflet(profile);
-  }
+    const { data: swiped } = await supabase.from("swipes").select("swiped_id").eq("swiper_id", myProfile.id);
+    const swipedIds = (swiped || []).map((s) => s.swiped_id);
 
-  function loadLeaflet(profile: any) {
-    if (window.L) {
-      setupMap(profile);
-      return;
-    }
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(link);
+    const { data: blocked } = await supabase
+      .from("blocks")
+      .select("blocker_id, blocked_id")
+      .or(`blocker_id.eq.${myProfile.id},blocked_id.eq.${myProfile.id}`);
+    const blockedIds = (blocked || []).map((b) =>
+      b.blocker_id === myProfile.id ? b.blocked_id : b.blocker_id
+    );
 
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload = () => setupMap(profile);
-    document.body.appendChild(script);
-  }
+    let query = supabase
+      .from("profiles")
+      .select("*")
+      .neq("id", myProfile.id)
+      .gte("age", myProfile.pref_min_age)
+      .lte("age", myProfile.pref_max_age);
 
-  function setupMap(profile: any) {
-    if (!mapDivRef.current || mapRef.current) return;
-    const L = window.L;
-    const startLat = profile.lat || 40.4168;
-    const startLng = profile.lng || -3.7038;
+    const { data: candidates } = await query;
 
-    const map = L.map(mapDivRef.current).setView([startLat, startLng], profile.is_traveling ? 5 : 11);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: "&copy; OpenStreetMap, &copy; CARTO",
-      maxZoom: 19,
-    }).addTo(map);
+    const isPremium = !!myProfile.is_premium;
+    const preferredMax = myProfile.pref_max_distance ?? FREE_MAX_DISTANCE_KM;
+    const effectiveMaxDistance = isPremium ? preferredMax : Math.min(preferredMax, FREE_MAX_DISTANCE_KM);
+    let cappedSomeone = false;
 
-    const marker = L.marker([startLat, startLng]).addTo(map);
-    markerRef.current = marker;
-    mapRef.current = map;
-
-    map.on("click", (e: any) => {
-      if (!profile.is_premium) {
-        setError("Viajar tocando el mapa es una funcion Premium. Hazte Premium para explorar libremente.");
-        return;
+    const filtered = (candidates || []).filter((c) => {
+      if (swipedIds.includes(c.id)) return false;
+      if (blockedIds.includes(c.id)) return false;
+      if (myProfile.lat && myProfile.lng && c.lat && c.lng) {
+        const d = distanceKm(myProfile.lat, myProfile.lng, c.lat, c.lng);
+        if (d > effectiveMaxDistance) {
+          if (!isPremium && d <= preferredMax) cappedSomeone = true;
+          return false;
+        }
       }
-      setError("");
-      const { lat, lng } = e.latlng;
-      marker.setLatLng([lat, lng]);
-      setSelected({ name: "Ubicacion personalizada", lat, lng });
+      return true;
     });
 
-    setMapReady(true);
+    setDistanceCapped(!isPremium && cappedSomeone);
+    setDeck(filtered);
+    setLoading(false);
   }
 
-  function flyTo(city: CityOption) {
-    if (!me?.is_premium) {
-      setError("Viajar a otras ciudades es una funcion Premium. Hazte Premium para explorar el mundo.");
-      return;
+  function isOnline(p: Profile) {
+    if (!p.last_active_at) return false;
+    const diffMin = (Date.now() - new Date(p.last_active_at).getTime()) / 60000;
+    return diffMin <= ONLINE_WINDOW_MINUTES;
+  }
+
+  function getVisibleDeck() {
+    let out = deck.filter((p) => {
+      if (filterName.trim() && !p.name?.toLowerCase().includes(filterName.trim().toLowerCase())) return false;
+      if (filterRole !== "Todos" && p.role !== filterRole) return false;
+      if (filterTag !== "Todos" && !(p.tags || []).includes(filterTag)) return false;
+      if (onlyOnline && !isOnline(p)) return false;
+      if (onlyLookingNow && !p.looking_now) return false;
+      return true;
+    });
+
+    if (sortNearest && me?.lat && me?.lng) {
+      out = [...out].sort((a, b) => {
+        const da = a.lat && a.lng ? distanceKm(me.lat, me.lng, a.lat, a.lng) : Infinity;
+        const db = b.lat && b.lng ? distanceKm(me.lat, me.lng, b.lat, b.lng) : Infinity;
+        return da - db;
+      });
     }
-    setError("");
-    setSelected(city);
-    if (mapRef.current && markerRef.current) {
-      mapRef.current.setView([city.lat, city.lng], 11);
-      markerRef.current.setLatLng([city.lat, city.lng]);
-    }
+
+    return out;
   }
 
-  async function confirmTravel() {
-    if (!me || !selected) return;
-    setSaving(true);
-    await supabase
-      .from("profiles")
-      .update({
-        lat: selected.lat,
-        lng: selected.lng,
-        is_traveling: true,
-        traveling_city: selected.name,
-      })
-      .eq("id", me.id);
-    setMe({ ...me, lat: selected.lat, lng: selected.lng, is_traveling: true, traveling_city: selected.name });
-    setSelected(null);
-    setSaving(false);
+  function clearFilters() {
+    setFilterName("");
+    setFilterRole("Todos");
+    setFilterTag("Todos");
+    setOnlyOnline(false);
+    setOnlyLookingNow(false);
+    setSortNearest(false);
   }
 
-  async function goHome() {
+  async function handleToggleLookingNow() {
     if (!me) return;
-    setSaving(true);
-    const homeLat = me.home_lat;
-    const homeLng = me.home_lng;
+    setTogglingLookingNow(true);
+    const next = !me.looking_now;
     await supabase
       .from("profiles")
-      .update({ lat: homeLat, lng: homeLng, is_traveling: false, traveling_city: null })
+      .update({ looking_now: next, looking_now_at: next ? new Date().toISOString() : null })
       .eq("id", me.id);
-    setMe({ ...me, lat: homeLat, lng: homeLng, is_traveling: false, traveling_city: null });
-    setSelected(null);
-    if (mapRef.current && markerRef.current && homeLat != null && homeLng != null) {
-      mapRef.current.setView([homeLat, homeLng], 11);
-      markerRef.current.setLatLng([homeLat, homeLng]);
-    }
-    setSaving(false);
+    setMe({ ...me, looking_now: next });
+    setTogglingLookingNow(false);
   }
 
-  function renderCityCard(city: CityOption) {
-    const active = me?.is_traveling && me?.traveling_city === city.name;
-    return (
-      <button
-        key={city.name}
-        onClick={() => flyTo(city)}
-        style={{
-          background: active ? "#e8352b" : "#171717",
-          border: "1px solid " + (active ? "#e8352b" : "#2a2a2a"),
-          color: "#f5f5f5",
-          borderRadius: 8,
-          padding: "8px 14px",
-          fontSize: 13,
-          fontWeight: 700,
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {city.name}
-      </button>
-    );
+  async function handleSwipe(action: "like" | "pass") {
+    if (!me) return;
+    const target = getVisibleDeck()[0];
+    if (!target) return;
+    await supabase.from("swipes").insert({ swiper_id: me.id, swiped_id: target.id, action });
+
+    if (action === "like") {
+      const { data: theirSwipe } = await supabase
+        .from("swipes")
+        .select("*")
+        .eq("swiper_id", target.id)
+        .eq("swiped_id", me.id)
+        .eq("action", "like")
+        .maybeSingle();
+      if (theirSwipe) {
+        setMatchName(target.name);
+        const orFilter = "and(user1_id.eq." + me.id + ",user2_id.eq." + target.id + "),and(user1_id.eq." + target.id + ",user2_id.eq." + me.id + ")";
+        const { data: existingMatch } = await supabase
+          .from("matches")
+          .select("id")
+          .or(orFilter)
+          .maybeSingle();
+        if (!existingMatch) {
+          const { data: newMatch } = await supabase
+            .from("matches")
+            .insert({ user1_id: me.id, user2_id: target.id })
+            .select()
+            .single();
+
+          if (newMatch) {
+            if (me.match_reveal_photo_url) {
+              await supabase.from("messages").insert({
+                match_id: newMatch.id,
+                sender_id: me.id,
+                image_url: me.match_reveal_photo_url,
+              });
+            }
+            if (target.match_reveal_photo_url) {
+              await supabase.from("messages").insert({
+                match_id: newMatch.id,
+                sender_id: target.id,
+                image_url: target.match_reveal_photo_url,
+              });
+            }
+          }
+        }
+      }
+    }
+    setDeck((d) => d.filter((p) => p.id !== target.id));
+  }
+
+  async function handleBlock() {
+    if (!me) return;
+    const target = getVisibleDeck()[0];
+    if (!target) return;
+    if (!confirm("Bloquear a " + target.name + "? No volveras a ver este perfil.")) return;
+    await supabase.from("blocks").insert({ blocker_id: me.id, blocked_id: target.id });
+    setDeck((d) => d.filter((p) => p.id !== target.id));
+  }
+
+  async function handleReport() {
+    if (!me) return;
+    const target = getVisibleDeck()[0];
+    if (!target) return;
+    const reason = prompt("Por que quieres denunciar a " + target.name + "? (breve motivo)");
+    if (reason === null) return;
+    await supabase.from("reports").insert({ reporter_id: me.id, reported_id: target.id, reason });
+    await supabase.from("blocks").insert({ blocker_id: me.id, blocked_id: target.id });
+    alert("Gracias, hemos recibido tu denuncia.");
+    setDeck((d) => d.filter((p) => p.id !== target.id));
   }
 
   if (loading) {
     return <div style={{ padding: 24, color: "#9a9a9a" }}>Cargando...</div>;
   }
 
+  const visibleDeck = getVisibleDeck();
+  const current = visibleDeck[0];
+  const filtersActive = filterName || filterRole !== "Todos" || filterTag !== "Todos" || onlyOnline || onlyLookingNow || sortNearest;
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <span className="brand" style={{ fontSize: 24, color: "#e8352b" }}>Dandy</span>
-        <a href="/" style={{ color: "#f5f5f5" }}>{"←"} Volver</a>
+        <div style={{ display: "flex", gap: 16 }}>
+          <a href="/events" style={{ color: "#f5f5f5" }}>Eventos</a>
+          <a href="/matches" style={{ color: "#f5f5f5" }}>Matches</a>
+          <a href="/radio" style={{ color: "#f5f5f5" }}>Radio</a>
+          <a href="/travel" style={{ color: "#f5f5f5" }}>Viajar</a>
+          <a href="/settings" style={{ color: "#f5f5f5" }}>Filtros</a>
+        </div>
       </div>
 
-      <h1 style={{ fontSize: 20, marginBottom: 4 }}>Viajar</h1>
-      <p style={{ fontSize: 13, color: "#9a9a9a", marginBottom: 16 }}>
-        Explora perfiles en cualquier parte del mundo. Elige una ciudad destacada o toca el mapa donde quieras aparecer.
-      </p>
-
-      {me?.is_traveling && (
-        <div style={{ background: "#1e1e1e", border: "1px solid #c9a24b", borderRadius: 8, padding: 12, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
-          <span>{"🌍"} Viajando ahora en {me.traveling_city || "una ubicacion personalizada"}</span>
-          <button
-            onClick={goHome}
-            disabled={saving}
-            style={{ background: "#c9a24b", color: "#1a1a1a", fontWeight: 700, border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}
-          >
-            Volver a casa
-          </button>
-        </div>
-      )}
-
-      {!me?.is_premium && (
-        <div style={{ background: "#1e1e1e", border: "1px solid #c9a24b", borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13, color: "#f5f5f5" }}>
-          Con la cuenta gratuita puedes ver el mapa, pero viajar a otras ciudades es una funcion Premium.{" "}
-          <a href="/settings" style={{ color: "#c9a24b", fontWeight: 700 }}>Hazte Premium</a>
-        </div>
-      )}
-
-      {error && (
-        <div style={{ background: "#3a1414", border: "1px solid #e8352b", borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 13, color: "#ffb4b0" }}>
-          {error}
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
-        {FEATURED_CITIES.map((c) => renderCityCard(c))}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          onClick={() => setShowFilters((v) => !v)}
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid " + (filtersActive ? "#f2c14e" : "#2a2a2a"),
+            background: "none",
+            color: filtersActive ? "#f2c14e" : "#f5f5f5",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {showFilters ? "Ocultar filtros" : "Filtros" + (filtersActive ? " (activos)" : "")}
+        </button>
+        <button
+          onClick={handleToggleLookingNow}
+          disabled={togglingLookingNow}
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid " + (me?.looking_now ? "#e8352b" : "#2a2a2a"),
+            background: me?.looking_now ? "#e8352b" : "none",
+            color: "#f5f5f5",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {me?.looking_now ? "🔥 Buscando ahora" : "Busco ahora"}
+        </button>
       </div>
 
-      <div
-        ref={mapDivRef}
-        style={{ width: "100%", height: 420, borderRadius: 8, border: "2px solid #2a2a2a", background: "#171717" }}
-      />
+      {showFilters && (
+        <div style={{ border: "1px solid #2a2a2a", borderRadius: 8, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+          <input
+            placeholder="Buscar por nombre"
+            value={filterName}
+            onChange={(e) => setFilterName(e.target.value)}
+          />
 
-      {selected && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, background: "#171717", border: "1px solid #2a2a2a", borderRadius: 8, padding: 12 }}>
-          <span style={{ fontSize: 13 }}>Vas a viajar a: <strong>{selected.name}</strong></span>
-          <button
-            onClick={confirmTravel}
-            disabled={saving}
-            style={{ background: "#e8352b", color: "#fff", fontWeight: 700, border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, cursor: "pointer" }}
-          >
-            {saving ? "Viajando..." : "Confirmar viaje"}
-          </button>
+          <div>
+            <label style={{ display: "block", fontSize: 12, color: "#9a9a9a", marginBottom: 4 }}>Rol</label>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #2a2a2a", background: "#171717", color: "#f5f5f5" }}
+            >
+              <option value="Todos">Todos</option>
+              {ROLE_FILTER_OPTIONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: 12, color: "#9a9a9a", marginBottom: 4 }}>Etiqueta / tribu</label>
+            <select
+              value={filterTag}
+              onChange={(e) => setFilterTag(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #2a2a2a", background: "#171717", color: "#f5f5f5" }}
+            >
+              <option value="Todos">Todas</option>
+              {TAG_FILTER_OPTIONS.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={onlyOnline} onChange={(e) => setOnlyOnline(e.target.checked)} />
+            Solo conectados ahora
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={onlyLookingNow} onChange={(e) => setOnlyLookingNow(e.target.checked)} />
+            Solo quien busca ahora
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={sortNearest} onChange={(e) => setSortNearest(e.target.checked)} />
+            Ordenar por mas cercanos primero
+          </label>
+
+          {filtersActive && (
+            <button
+              onClick={clearFilters}
+              style={{ background: "none", border: "1px solid #9a9a9a", color: "#9a9a9a", borderRadius: 6, padding: 8, fontSize: 12, cursor: "pointer" }}
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
       )}
 
-      {!mapReady && (
-        <p style={{ fontSize: 12, color: "#9a9a9a", marginTop: 8 }}>Cargando mapa...</p>
+      {matchName && (
+        <div style={{ background: "#f2c14e", color: "#0d0d0d", border: "2px solid #f5f5f5", borderRadius: 4, padding: 16, marginBottom: 16, fontWeight: 700 }}>
+          Nuevo match con {matchName}! <a href="/matches" style={{ textDecoration: "underline" }}>Ver chat</a>
+          <button onClick={() => setMatchName(null)} style={{ float: "right", background: "none", border: "none", fontWeight: 700 }}>X</button>
+        </div>
+      )}
+
+      {distanceCapped && (
+        <div style={{ background: "#1e1e1e", border: "1px solid #c9a24b", borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 13, color: "#f5f5f5", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <span>Con la cuenta gratuita solo ves perfiles a menos de {FREE_MAX_DISTANCE_KM} km. Hay mas gente esperando un poco mas lejos.</span>
+          <a href="/settings" style={{ flexShrink: 0, background: "#c9a24b", color: "#1a1a1a", fontWeight: 700, padding: "6px 14px", borderRadius: 8, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>Hazte Premium</a>
+        </div>
+      )}
+
+      {!current && (
+        <div style={{ padding: 40, textAlign: "center", color: "#9a9a9a" }}>
+          {deck.length === 0 ? "No hay mas perfiles por ahora. Ajusta tus filtros o vuelve mas tarde." : "Nadie coincide con estos filtros ahora mismo."}
+        </div>
+      )}
+
+      {current && (
+        <div style={{ border: "2px solid #f5f5f5", borderRadius: 8, overflow: "hidden", background: "#171717" }}>
+          <div style={{ height: 380, background: "#1e6fd9", position: "relative" }}>
+            {current.photos?.[0] ? (
+              <img src={current.photos[0]} alt={current.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#fff" }}>
+                Sin foto
+              </div>
+            )}
+            {isOnline(current) && (
+              <span style={{ position: "absolute", top: 10, left: 10, background: "#4bc97a", color: "#0a0a0a", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
+                ● Conectado
+              </span>
+            )}
+            {current.looking_now && (
+              <span style={{ position: "absolute", top: 10, right: 10, background: "#e8352b", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
+                🔥 Busca ahora
+              </span>
+            )}
+          </div>
+          <div style={{ padding: 16 }}>
+            <p style={{ fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {current.name}, {current.age}
+              {current.verification_status === "approved" && (
+                <span title="Perfil verificado" style={{ background: "#1e6fd9", color: "#fff", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+                  Verificado ✓
+                </span>
+              )}
+              {current.age_verification_status === "approved" && (
+                <span title="Edad verificada" style={{ background: "#4bc97a", color: "#0a0a0a", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+                  Edad verificada ✓
+                </span>
+              )}
+            </p>
+            <p style={{ fontSize: 13, color: "#9a9a9a" }}>{current.city}</p>
+            <p style={{ marginTop: 8 }}>{current.bio}</p>
+            {current.tags?.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                {current.tags.map((tag) => (
+                  <span key={tag} style={{ background: "#2a2a2a", color: "#f2c14e", fontSize: 12, padding: "4px 10px", borderRadius: 20 }}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
+              <button onClick={handleBlock} style={{ background: "none", border: "none", color: "#9a9a9a", fontSize: 12, cursor: "pointer", padding: 0 }}>
+                Bloquear
+              </button>
+              <button onClick={handleReport} style={{ background: "none", border: "none", color: "#9a9a9a", fontSize: 12, cursor: "pointer", padding: 0 }}>
+                Denunciar
+              </button>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 24, padding: 16, borderTop: "2px solid #2a2a2a" }}>
+            <button onClick={() => handleSwipe("pass")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #9a9a9a", background: "none", color: "#9a9a9a", fontSize: 20 }}>
+              X
+            </button>
+            <button onClick={() => handleSwipe("like")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #e8352b", background: "#e8352b", color: "#fff", fontSize: 20 }}>
+              Like
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
 }
-
