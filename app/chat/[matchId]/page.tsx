@@ -16,6 +16,7 @@ export default function Chat() {
   const [iSharedMine, setISharedMine] = useState(false);
   const [theirPrivatePhotos, setTheirPrivatePhotos] = useState<any[]>([]);
   const [sharing, setSharing] = useState(false);
+  const [revealedIds, setRevealedIds] = useState<number[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<any>(null);
   const typingTimeoutRef = useRef<any>(null);
@@ -159,21 +160,32 @@ export default function Chat() {
     setText("");
   }
 
-  async function handleSendPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleSendMedia(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !myId) return;
-    setUploading(true);
+    const isVideo = file.type.startsWith("video/");
+    const selfDestruct = confirm(
+      (isVideo ? "Vas a enviar un video." : "Vas a enviar una foto.") +
+        " Pulsa Aceptar para que se autodestruya despues de verse una vez, o Cancelar para que se quede guardada en el chat."
+    );
 
+    setUploading(true);
     const path = `chat/${matchId}/${Date.now()}-${file.name}`;
     const { error: upErr } = await supabase.storage.from("photos").upload(path, file);
     if (upErr) {
-      alert("Error subiendo la foto: " + upErr.message);
+      alert("Error subiendo el archivo: " + upErr.message);
       setUploading(false);
       return;
     }
     const { data } = supabase.storage.from("photos").getPublicUrl(path);
 
-    await supabase.from("messages").insert({ match_id: Number(matchId), sender_id: myId, image_url: data.publicUrl });
+    const payload: any = { match_id: Number(matchId), sender_id: myId, self_destruct: selfDestruct };
+    if (isVideo) {
+      payload.video_url = data.publicUrl;
+    } else {
+      payload.image_url = data.publicUrl;
+    }
+    await supabase.from("messages").insert(payload);
     setUploading(false);
     e.target.value = "";
   }
@@ -185,25 +197,50 @@ export default function Chat() {
     setMessages((prev) => prev.filter((m) => m.id !== id));
   }
 
+  function handleRevealSelfDestruct(m: any) {
+    if (revealedIds.includes(m.id)) return;
+    setRevealedIds((prev) => [...prev, m.id]);
+    supabase.from("messages").update({ viewed_at: new Date().toISOString() }).eq("id", m.id).then();
+    setTimeout(() => {
+      supabase.from("messages").delete().eq("id", m.id).then();
+    }, 5000);
+  }
+
   function renderMessage(m: any) {
     const mine = m.sender_id === myId;
+    const isMedia = !!m.image_url || !!m.video_url;
     const bubbleStyle = {
       alignSelf: mine ? "flex-end" : "flex-start",
       background: mine ? "#e8352b" : "#171717",
       border: "2px solid " + (mine ? "#e8352b" : "#2a2a2a"),
       color: "#f5f5f5",
       borderRadius: 12,
-      padding: m.image_url ? 6 : "8px 14px",
+      padding: isMedia ? 6 : "8px 14px",
       maxWidth: "75%",
       position: "relative" as const,
     };
+
+    const hiddenBySelfDestruct = m.self_destruct && !mine && !revealedIds.includes(m.id);
+
     return (
       <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
         <div style={bubbleStyle}>
-          {m.image_url ? (
+          {hiddenBySelfDestruct ? (
+            <button
+              onClick={() => handleRevealSelfDestruct(m)}
+              style={{ background: "none", border: "none", color: "#f5f5f5", fontSize: 13, cursor: "pointer", padding: 10, display: "flex", alignItems: "center", gap: 6 }}
+            >
+              🔥 Toca para ver (se borra tras verla)
+            </button>
+          ) : m.image_url ? (
             <img src={m.image_url} alt="Foto" style={{ maxWidth: "100%", borderRadius: 8, display: "block" }} />
+          ) : m.video_url ? (
+            <video src={m.video_url} controls style={{ maxWidth: "100%", borderRadius: 8, display: "block" }} />
           ) : (
             m.content
+          )}
+          {m.self_destruct && !hiddenBySelfDestruct && (
+            <p style={{ fontSize: 10, color: mine ? "#ffdada" : "#c9a24b", margin: "4px 0 0" }}>🔥 Un solo vistazo</p>
           )}
         </div>
         {mine && (
@@ -260,7 +297,7 @@ export default function Chat() {
       <form onSubmit={sendMessage} style={{ display: "flex", gap: 8, padding: 16, borderTop: "2px solid #2a2a2a" }}>
         <label style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, borderRadius: 8, border: "1px solid #2a2a2a", cursor: "pointer", flexShrink: 0 }}>
           {uploading ? "..." : "📷"}
-          <input type="file" accept="image/*" onChange={handleSendPhoto} disabled={uploading} style={{ display: "none" }} />
+          <input type="file" accept="image/*,video/*" onChange={handleSendMedia} disabled={uploading} style={{ display: "none" }} />
         </label>
         <input placeholder="Escribe un mensaje..." value={text} onChange={handleTextChange} style={{ flex: 1 }} />
         <button className="primary" type="submit">Enviar</button>
