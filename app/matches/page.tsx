@@ -28,7 +28,13 @@ export default function Matches() {
       (data || []).map(async (m) => {
         const otherId = m.user1_id === myId ? m.user2_id : m.user1_id;
         const { data: profile } = await supabase.from("profiles").select("name, photos").eq("id", otherId).single();
-        return { matchId: m.id, name: profile?.name, photo: profile?.photos?.[0] };
+        const { count } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("match_id", m.id)
+          .neq("sender_id", myId)
+          .eq("read", false);
+        return { matchId: m.id, name: profile?.name, photo: profile?.photos?.[0], unread: count || 0 };
       })
     );
     setMatches(withProfiles);
@@ -46,7 +52,7 @@ export default function Matches() {
       {matches.length === 0 && <p style={{ color: "#9a9a9a" }}>Todavía no tienes matches.</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {matches.map((m) => (
-          <a
+          
             key={m.matchId}
             href={`/chat/${m.matchId}`}
             style={{
@@ -63,7 +69,12 @@ export default function Matches() {
             <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#1e6fd9", overflow: "hidden", flexShrink: 0 }}>
               {m.photo && <img src={m.photo} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
             </div>
-            <span style={{ fontWeight: 700 }}>{m.name}</span>
+            <span style={{ fontWeight: 700, flex: 1 }}>{m.name}</span>
+            {m.unread > 0 && (
+              <span style={{ background: "#e8352b", color: "#fff", fontSize: 12, fontWeight: 700, minWidth: 20, height: 20, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 6px" }}>
+                {m.unread}
+              </span>
+            )}
           </a>
         ))}
       </div>
