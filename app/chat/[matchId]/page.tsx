@@ -257,8 +257,14 @@ export default function Chat() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, borderBottom: "2px solid #2a2a2a" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: 16, borderBottom: "2px solid #2a2a2a" }}>
         <a href="/matches" style={{ color: "#f5f5f5" }}>← Volver</a>
+        <a
+          href={`/call/${matchId}`}
+          style={{ background: "#e8352b", color: "#fff", fontWeight: 700, borderRadius: 20, padding: "6px 14px", fontSize: 13, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}
+        >
+          📞 Llamar
+        </a>
       </div>
 
       {(hasPrivatePhotos && !iSharedMine) || theirPrivatePhotos.length > 0 ? (
@@ -305,3 +311,4 @@ export default function Chat() {
     </div>
   );
 }
+
