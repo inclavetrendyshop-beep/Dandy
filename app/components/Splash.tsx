@@ -27,17 +27,18 @@ export default function Splash() {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 18,
+        gap: "clamp(16px, 4vw, 22px)",
         opacity: fading ? 0 : 1,
         transition: "opacity 0.5s ease",
         pointerEvents: fading ? "none" : "auto",
+        padding: "0 24px",
       }}
     >
       <div
         style={{
           position: "relative",
-          width: 88,
-          height: 88,
+          width: "clamp(96px, 28vw, 140px)",
+          height: "clamp(96px, 28vw, 140px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -46,7 +47,7 @@ export default function Splash() {
         <div
           style={{
             position: "absolute",
-            inset: -20,
+            inset: "-22%",
             borderRadius: "50%",
             background: "radial-gradient(circle, rgba(232,53,43,0.35) 0%, rgba(232,53,43,0) 70%)",
             animation: "dandySplashGlow 1.8s ease-in-out infinite",
@@ -55,9 +56,9 @@ export default function Splash() {
         <div
           style={{
             position: "relative",
-            width: 72,
-            height: 72,
-            borderRadius: 16,
+            width: "100%",
+            height: "100%",
+            borderRadius: "22%",
             border: "3px solid #e8352b",
             background: "#0d0d0d",
             display: "flex",
@@ -66,11 +67,11 @@ export default function Splash() {
             animation: "dandySplashBreathe 1.8s ease-in-out infinite",
           }}
         >
-          <span style={{ color: "#e8352b", fontSize: 40, fontWeight: 900, fontFamily: "'Fredoka', sans-serif" }}>D</span>
+          <span style={{ color: "#e8352b", fontSize: "clamp(48px, 14vw, 70px)", fontWeight: 900, fontFamily: "'Fredoka', sans-serif" }}>D</span>
         </div>
       </div>
-      <span className="brand" style={{ fontSize: 28, color: "#e8352b" }}>Dandy</span>
-      <span style={{ fontSize: 13, color: "#9a9a9a", textAlign: "center", padding: "0 32px" }}>
+      <span className="brand" style={{ fontSize: "clamp(30px, 8vw, 42px)", color: "#e8352b" }}>Dandy</span>
+      <span style={{ fontSize: "clamp(13px, 3.5vw, 16px)", color: "#9a9a9a", textAlign: "center", maxWidth: 320 }}>
         Conecta con hombres sofisticados cerca de ti
       </span>
       <style>{`
