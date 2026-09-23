@@ -91,10 +91,14 @@ export default function Travel() {
     const startLng = profile.lng || -3.7038;
 
     const map = L.map(mapDivRef.current).setView([startLat, startLng], profile.is_traveling ? 5 : 11);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: "&copy; OpenStreetMap, &copy; CARTO",
+    const tileLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
       maxZoom: 19,
     }).addTo(map);
+    const tilePane = map.getPane("tilePane");
+    if (tilePane) {
+      tilePane.style.filter = "invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6)";
+    }
 
     const marker = L.marker([startLat, startLng]).addTo(map);
     markerRef.current = marker;
