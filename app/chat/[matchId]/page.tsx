@@ -51,6 +51,13 @@ export default function Chat() {
           }
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "messages", filter: `match_id=eq.${matchId}` },
+        (payload) => {
+          setMessages((prev) => prev.filter((m) => m.id !== payload.old.id));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -88,32 +95,53 @@ export default function Chat() {
     e.target.value = "";
   }
 
+  async function handleDeleteMessage(id: number) {
+    const sure = confirm("Borrar este mensaje?");
+    if (!sure) return;
+    await supabase.from("messages").delete().eq("id", id);
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+  }
+
+  function renderMessage(m: any) {
+    const mine = m.sender_id === myId;
+    const bubbleStyle = {
+      alignSelf: mine ? "flex-end" : "flex-start",
+      background: mine ? "#e8352b" : "#171717",
+      border: "2px solid " + (mine ? "#e8352b" : "#2a2a2a"),
+      color: "#f5f5f5",
+      borderRadius: 12,
+      padding: m.image_url ? 6 : "8px 14px",
+      maxWidth: "75%",
+      position: "relative" as const,
+    };
+    return (
+      <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
+        <div style={bubbleStyle}>
+          {m.image_url ? (
+            <img src={m.image_url} alt="Foto" style={{ maxWidth: "100%", borderRadius: 8, display: "block" }} />
+          ) : (
+            m.content
+          )}
+        </div>
+        {mine && (
+          <button
+            onClick={() => handleDeleteMessage(m.id)}
+            style={{ background: "none", border: "none", color: "#9a9a9a", fontSize: 11, cursor: "pointer", padding: "2px 4px" }}
+          >
+            Borrar
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, borderBottom: "2px solid #2a2a2a" }}>
         <a href="/matches" style={{ color: "#f5f5f5" }}>← Volver</a>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              alignSelf: m.sender_id === myId ? "flex-end" : "flex-start",
-              background: m.sender_id === myId ? "#e8352b" : "#171717",
-              border: "2px solid " + (m.sender_id === myId ? "#e8352b" : "#2a2a2a"),
-              color: "#f5f5f5",
-              borderRadius: 12,
-              padding: m.image_url ? 6 : "8px 14px",
-              maxWidth: "75%",
-            }}
-          >
-            {m.image_url ? (
-              <img src={m.image_url} alt="Foto" style={{ maxWidth: "100%", borderRadius: 8, display: "block" }} />
-            ) : (
-              m.content
-            )}
-          </div>
-        ))}
+        {messages.map((m) => renderMessage(m))}
         <div ref={bottomRef} />
       </div>
       <form onSubmit={sendMessage} style={{ display: "flex", gap: 8, padding: 16, borderTop: "2px solid #2a2a2a" }}>
