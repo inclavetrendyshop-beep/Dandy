@@ -10,7 +10,11 @@ export default function Chat() {
   const [messages, setMessages] = useState<any[]>([]);
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [otherTyping, setOtherTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const channelRef = useRef<any>(null);
+  const typingTimeoutRef = useRef<any>(null);
+  const stopTypingTimeoutRef = useRef<any>(null);
 
   useEffect(() => {
     init();
@@ -40,7 +44,7 @@ export default function Chat() {
       .eq("read", false);
 
     const channel = supabase
-      .channel(`chat-${matchId}`)
+      .channel(`chat-${matchId}`, { config: { broadcast: { self: false } } })
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `match_id=eq.${matchId}` },
@@ -58,7 +62,15 @@ export default function Chat() {
           setMessages((prev) => prev.filter((m) => m.id !== payload.old.id));
         }
       )
+      .on("broadcast", { event: "typing" }, (payload) => {
+        if (payload.payload?.userId === uid) return;
+        setOtherTyping(true);
+        if (stopTypingTimeoutRef.current) clearTimeout(stopTypingTimeoutRef.current);
+        stopTypingTimeoutRef.current = setTimeout(() => setOtherTyping(false), 3000);
+      })
       .subscribe();
+
+    channelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
@@ -68,6 +80,16 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  function handleTextChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setText(e.target.value);
+    if (!myId || !channelRef.current) return;
+    if (typingTimeoutRef.current) return;
+    channelRef.current.send({ type: "broadcast", event: "typing", payload: { userId: myId } });
+    typingTimeoutRef.current = setTimeout(() => {
+      typingTimeoutRef.current = null;
+    }, 1500);
+  }
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
@@ -142,6 +164,9 @@ export default function Chat() {
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
         {messages.map((m) => renderMessage(m))}
+        {otherTyping && (
+          <p style={{ fontSize: 12, color: "#9a9a9a", fontStyle: "italic", margin: 0 }}>Escribiendo...</p>
+        )}
         <div ref={bottomRef} />
       </div>
       <form onSubmit={sendMessage} style={{ display: "flex", gap: 8, padding: 16, borderTop: "2px solid #2a2a2a" }}>
@@ -149,7 +174,7 @@ export default function Chat() {
           {uploading ? "..." : "📷"}
           <input type="file" accept="image/*" onChange={handleSendPhoto} disabled={uploading} style={{ display: "none" }} />
         </label>
-        <input placeholder="Escribe un mensaje..." value={text} onChange={(e) => setText(e.target.value)} style={{ flex: 1 }} />
+        <input placeholder="Escribe un mensaje..." value={text} onChange={handleTextChange} style={{ flex: 1 }} />
         <button className="primary" type="submit">Enviar</button>
       </form>
     </div>
