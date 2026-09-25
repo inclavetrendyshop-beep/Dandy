@@ -60,7 +60,23 @@ export default function AdminVerificaciones() {
 
   async function handleAgeDecision(id: string, decision: "approved" | "rejected") {
     setActingOn(id);
-    await supabase.from("profiles").update({ age_verification_status: decision }).eq("id", id);
+
+    const profile = agePending.find((p) => p.id === id);
+
+    await supabase
+      .from("profiles")
+      .update({ age_verification_status: decision, age_verification_photo_url: null })
+      .eq("id", id);
+
+    if (profile?.age_verification_photo_url) {
+      const marker = "/photos/";
+      const idx = profile.age_verification_photo_url.indexOf(marker);
+      if (idx !== -1) {
+        const storagePath = profile.age_verification_photo_url.substring(idx + marker.length);
+        await supabase.storage.from("photos").remove([storagePath]);
+      }
+    }
+
     setAgePending((prev) => prev.filter((p) => p.id !== id));
     setActingOn(null);
   }
@@ -156,3 +172,4 @@ export default function AdminVerificaciones() {
     </div>
   );
 }
+
