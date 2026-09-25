@@ -23,6 +23,8 @@ export default function Settings() {
   const [uploadingPrivate, setUploadingPrivate] = useState(false);
   const [privatePhotoError, setPrivatePhotoError] = useState("");
   const [revealUrl, setRevealUrl] = useState<string | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState("");
 
   useEffect(() => {
     load();
@@ -72,6 +74,30 @@ export default function Settings() {
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/login");
+  }
+
+  async function handleUpgrade() {
+    if (!me) return;
+    setUpgrading(true);
+    setUpgradeError("");
+
+    const { data: userData } = await supabase.auth.getUser();
+
+    const res = await fetch("/api/create-checkout-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: me.id, email: userData.user?.email }),
+    });
+
+    const data = await res.json();
+
+    if (data.url) {
+      window.location.href = data.url;
+      return;
+    }
+
+    setUpgradeError(data.error || "No se pudo iniciar el pago");
+    setUpgrading(false);
   }
 
   async function handleVerifyUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -225,6 +251,21 @@ export default function Settings() {
       <a href="/edit-profile" style={{ display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #e8352b", color: "#e8352b", marginBottom: 12, fontWeight: 700, textDecoration: "none" }}>
         Editar perfil
       </a>
+
+      {me?.is_premium ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: 12, borderRadius: 8, border: "1px solid #f2c14e", color: "#f2c14e", marginBottom: 12, fontWeight: 700 }}>
+          Ya eres Premium
+        </div>
+      ) : (
+        <button
+          onClick={handleUpgrade}
+          disabled={upgrading}
+          style={{ display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 8, border: "none", background: "#f2c14e", color: "#1a1a1a", marginBottom: 12, fontWeight: 700, cursor: "pointer" }}
+        >
+          {upgrading ? "Cargando..." : "Hazte Premium - 4,99€/mes"}
+        </button>
+      )}
+      {upgradeError && <p style={{ color: "#e2504a", fontSize: 13, marginBottom: 12 }}>{upgradeError}</p>}
 
       {userEmail === ADMIN_EMAIL ? (
         <a href="/admin/verificaciones" style={{ display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 8, border: "1px solid #1e6fd9", color: "#1e6fd9", marginBottom: 24, fontWeight: 700, textDecoration: "none" }}>
