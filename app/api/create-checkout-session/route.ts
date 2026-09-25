@@ -22,6 +22,7 @@ export async function POST(req: Request) {
   body.append("cancel_url", origin + "/settings");
   body.append("client_reference_id", userId);
   body.append("metadata[user_id]", userId);
+  body.append("managed_payments[enabled]", "false");
   if (email) {
     body.append("customer_email", email);
   }
