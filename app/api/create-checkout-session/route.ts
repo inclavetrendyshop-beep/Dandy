@@ -23,6 +23,7 @@ export async function POST(req: Request) {
   body.append("client_reference_id", userId);
   body.append("metadata[user_id]", userId);
   body.append("managed_payments[enabled]", "false");
+  body.append("subscription_data[trial_period_days]", "7");
   if (email) {
     body.append("customer_email", email);
   }
