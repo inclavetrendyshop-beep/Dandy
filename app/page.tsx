@@ -23,6 +23,13 @@ type Profile = {
   traveling_city?: string;
 };
 
+type LastSwipe = {
+  profile: Profile;
+  action: "like" | "pass";
+  swipeId: string;
+  matchId?: string;
+};
+
 const FREE_MAX_DISTANCE_KM = 5;
 const ONLINE_WINDOW_MINUTES = 15;
 
@@ -50,9 +57,13 @@ export default function SwipeDeck() {
   const [filterTag, setFilterTag] = useState("Todos");
   const [onlyOnline, setOnlyOnline] = useState(false);
   const [onlyLookingNow, setOnlyLookingNow] = useState(false);
+  const [onlyVerified, setOnlyVerified] = useState(false);
   const [sortNearest, setSortNearest] = useState(false);
   const [viewToast, setViewToast] = useState(false);
   const loggedViewIds = useRef<Set<string>>(new Set());
+
+  const [lastSwipe, setLastSwipe] = useState<LastSwipe | null>(null);
+  const [rewinding, setRewinding] = useState(false);
 
   useEffect(() => {
     load();
@@ -175,6 +186,7 @@ export default function SwipeDeck() {
       if (filterTag !== "Todos" && !(p.tags || []).includes(filterTag)) return false;
       if (onlyOnline && !isOnline(p)) return false;
       if (onlyLookingNow && !p.looking_now) return false;
+      if (onlyVerified && p.verification_status !== "approved") return false;
       return true;
     });
 
@@ -195,6 +207,7 @@ export default function SwipeDeck() {
     setFilterTag("Todos");
     setOnlyOnline(false);
     setOnlyLookingNow(false);
+    setOnlyVerified(false);
     setSortNearest(false);
   }
 
@@ -214,7 +227,14 @@ export default function SwipeDeck() {
     if (!me) return;
     const target = getVisibleDeck()[0];
     if (!target) return;
-    await supabase.from("swipes").insert({ swiper_id: me.id, swiped_id: target.id, action });
+
+    const { data: newSwipe } = await supabase
+      .from("swipes")
+      .insert({ swiper_id: me.id, swiped_id: target.id, action })
+      .select()
+      .single();
+
+    let createdMatchId: string | undefined;
 
     if (action === "like") {
       const { data: theirSwipe } = await supabase
@@ -240,6 +260,7 @@ export default function SwipeDeck() {
             .single();
 
           if (newMatch) {
+            createdMatchId = newMatch.id;
             if (me.match_reveal_photo_url) {
               await supabase.from("messages").insert({
                 match_id: newMatch.id,
@@ -255,10 +276,38 @@ export default function SwipeDeck() {
               });
             }
           }
+        } else {
+          createdMatchId = existingMatch.id;
         }
       }
     }
+
+    if (newSwipe) {
+      setLastSwipe({ profile: target, action, swipeId: newSwipe.id, matchId: createdMatchId });
+    }
+
     setDeck((d) => d.filter((p) => p.id !== target.id));
+  }
+
+  async function handleRewind() {
+    if (!lastSwipe || rewinding) return;
+    if (!me?.is_premium) {
+      alert("Deshacer el ultimo swipe (Rewind) es una funcion Premium. Hazte Premium para usarla.");
+      return;
+    }
+    setRewinding(true);
+    try {
+      if (lastSwipe.matchId) {
+        await supabase.from("messages").delete().eq("match_id", lastSwipe.matchId);
+        await supabase.from("matches").delete().eq("id", lastSwipe.matchId);
+      }
+      await supabase.from("swipes").delete().eq("id", lastSwipe.swipeId);
+      setDeck((d) => [lastSwipe.profile, ...d]);
+      setMatchName((current) => (current === lastSwipe.profile.name ? null : current));
+      setLastSwipe(null);
+    } finally {
+      setRewinding(false);
+    }
   }
 
   async function handleBlock() {
@@ -288,7 +337,7 @@ export default function SwipeDeck() {
 
   const visibleDeck = getVisibleDeck();
   const current = visibleDeck[0];
-  const filtersActive = filterName || filterRole !== "Todos" || filterTag !== "Todos" || onlyOnline || onlyLookingNow || sortNearest;
+  const filtersActive = filterName || filterRole !== "Todos" || filterTag !== "Todos" || onlyOnline || onlyLookingNow || onlyVerified || sortNearest;
 
   if (current) {
     logView(current.id);
@@ -304,6 +353,7 @@ export default function SwipeDeck() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <span className="brand" style={{ fontSize: 24, color: "#e8352b" }}>Dandy</span>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <a href="/likes" style={{ color: "#f5f5f5" }}>Likes</a>
           <a href="/nearby" style={{ color: "#f5f5f5" }}>Cercanos</a>
           <a href="/viewers" style={{ color: "#f5f5f5" }}>Huellas</a>
           <a href="/trending" style={{ color: "#f5f5f5" }}>Tendencias</a>
@@ -312,6 +362,7 @@ export default function SwipeDeck() {
           <a href="/radio" style={{ color: "#f5f5f5" }}>Radio</a>
           <a href="/travel" style={{ color: "#f5f5f5" }}>Viajar</a>
           <a href="/settings" style={{ color: "#f5f5f5" }}>Filtros</a>
+          <a href="/soporte" style={{ color: "#f5f5f5" }}>Soporte</a>
         </div>
       </div>
 
@@ -395,6 +446,11 @@ export default function SwipeDeck() {
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
             <input type="checkbox" checked={onlyLookingNow} onChange={(e) => setOnlyLookingNow(e.target.checked)} />
             Solo quien busca ahora
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={onlyVerified} onChange={(e) => setOnlyVerified(e.target.checked)} />
+            Solo perfiles verificados ✓
           </label>
 
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
@@ -499,7 +555,25 @@ export default function SwipeDeck() {
               </button>
             </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 24, padding: 16, borderTop: "2px solid #2a2a2a" }}>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 24, padding: 16, borderTop: "2px solid #2a2a2a" }}>
+            <button
+              onClick={handleRewind}
+              disabled={!lastSwipe || rewinding}
+              title={me?.is_premium ? "Deshacer ultimo swipe" : "Rewind es Premium"}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                border: "2px solid " + (lastSwipe ? "#f2c14e" : "#2a2a2a"),
+                background: "none",
+                color: lastSwipe ? "#f2c14e" : "#5a5a5a",
+                fontSize: 16,
+                cursor: lastSwipe ? "pointer" : "default",
+                opacity: lastSwipe ? 1 : 0.5,
+              }}
+            >
+              ↺
+            </button>
             <button onClick={() => handleSwipe("pass")} style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #9a9a9a", background: "none", color: "#9a9a9a", fontSize: 20 }}>
               X
             </button>
@@ -512,5 +586,4 @@ export default function SwipeDeck() {
     </div>
   );
 }
-
 
