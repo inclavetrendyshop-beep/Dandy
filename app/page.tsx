@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, distanceKm } from "@/lib/supabase";
 
@@ -19,6 +19,8 @@ type Profile = {
   match_reveal_photo_url?: string;
   last_active_at?: string;
   looking_now?: boolean;
+  is_traveling?: boolean;
+  traveling_city?: string;
 };
 
 const FREE_MAX_DISTANCE_KM = 5;
@@ -49,10 +51,58 @@ export default function SwipeDeck() {
   const [onlyOnline, setOnlyOnline] = useState(false);
   const [onlyLookingNow, setOnlyLookingNow] = useState(false);
   const [sortNearest, setSortNearest] = useState(false);
+  const [viewToast, setViewToast] = useState(false);
+  const loggedViewIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (!me) return;
+
+    function playPing() {
+      try {
+        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      } catch {}
+    }
+
+    const channel = supabase
+      .channel("profile-views-" + me.id)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "profile_views", filter: "viewed_id=eq." + me.id },
+        (payload: any) => {
+          if (payload.new?.viewer_id === me.id) return;
+          playPing();
+          setViewToast(true);
+          setTimeout(() => setViewToast(false), 4000);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [me?.id]);
+
+  async function logView(targetId: string) {
+    if (!me || targetId === me.id) return;
+    if (loggedViewIds.current.has(targetId)) return;
+    loggedViewIds.current.add(targetId);
+    await supabase.from("profile_views").insert({ viewer_id: me.id, viewed_id: targetId });
+  }
 
   async function load() {
     const { data: userData } = await supabase.auth.getUser();
@@ -240,11 +290,23 @@ export default function SwipeDeck() {
   const current = visibleDeck[0];
   const filtersActive = filterName || filterRole !== "Todos" || filterTag !== "Todos" || onlyOnline || onlyLookingNow || sortNearest;
 
+  if (current) {
+    logView(current.id);
+  }
+
   return (
     <div style={{ padding: 16 }}>
+      {viewToast && (
+        <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", background: "#f2c14e", color: "#0d0d0d", fontWeight: 700, fontSize: 13, padding: "8px 16px", borderRadius: 20, zIndex: 100 }}>
+          👀 Alguien ha visto tu perfil
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <span className="brand" style={{ fontSize: 24, color: "#e8352b" }}>Dandy</span>
-        <div style={{ display: "flex", gap: 16 }}>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <a href="/nearby" style={{ color: "#f5f5f5" }}>Cercanos</a>
+          <a href="/viewers" style={{ color: "#f5f5f5" }}>Huellas</a>
+          <a href="/trending" style={{ color: "#f5f5f5" }}>Tendencias</a>
           <a href="/events" style={{ color: "#f5f5f5" }}>Eventos</a>
           <a href="/matches" style={{ color: "#f5f5f5" }}>Matches</a>
           <a href="/radio" style={{ color: "#f5f5f5" }}>Radio</a>
@@ -381,9 +443,13 @@ export default function SwipeDeck() {
                 Sin foto
               </div>
             )}
-            {isOnline(current) && (
+            {isOnline(current) ? (
               <span style={{ position: "absolute", top: 10, left: 10, background: "#4bc97a", color: "#0a0a0a", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
-                ● Conectado
+                ● En linea
+              </span>
+            ) : (
+              <span style={{ position: "absolute", top: 10, left: 10, background: "rgba(30,30,30,0.85)", color: "#9a9a9a", fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
+                ● Desconectado
               </span>
             )}
             {current.looking_now && (
@@ -406,7 +472,14 @@ export default function SwipeDeck() {
                 </span>
               )}
             </p>
-            <p style={{ fontSize: 13, color: "#9a9a9a" }}>{current.city}</p>
+            <p style={{ fontSize: 13, color: "#9a9a9a" }}>
+              {current.city}
+              {current.is_traveling && (
+                <span title={"Viajando" + (current.traveling_city ? " en " + current.traveling_city : "")} style={{ marginLeft: 6 }}>
+                  ✈️
+                </span>
+              )}
+            </p>
             <p style={{ marginTop: 8 }}>{current.bio}</p>
             {current.tags?.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
@@ -439,4 +512,5 @@ export default function SwipeDeck() {
     </div>
   );
 }
+
 
