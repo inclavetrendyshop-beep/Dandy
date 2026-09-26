@@ -21,6 +21,7 @@ type Profile = {
   looking_now?: boolean;
   is_traveling?: boolean;
   traveling_city?: string;
+  boosted_until?: string | null;
 };
 
 type LastSwipe = {
@@ -64,6 +65,9 @@ export default function SwipeDeck() {
 
   const [lastSwipe, setLastSwipe] = useState<LastSwipe | null>(null);
   const [rewinding, setRewinding] = useState(false);
+
+  const [streakToast, setStreakToast] = useState<string | null>(null);
+  const [usingBoost, setUsingBoost] = useState(false);
 
   useEffect(() => {
     load();
@@ -126,6 +130,30 @@ export default function SwipeDeck() {
       router.push("/onboarding");
       return;
     }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (myProfile.streak_last_date !== todayStr) {
+      const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const prevStreak = myProfile.streak_count || 0;
+      const newStreak = myProfile.streak_last_date === yesterdayStr ? prevStreak + 1 : 1;
+      let newBoostCredits = myProfile.boost_credits || 0;
+      const grantedBoost = newStreak > 0 && newStreak % 7 === 0;
+      if (grantedBoost) newBoostCredits += 1;
+
+      await supabase
+        .from("profiles")
+        .update({ streak_count: newStreak, streak_last_date: todayStr, boost_credits: newBoostCredits })
+        .eq("id", myProfile.id);
+
+      myProfile.streak_count = newStreak;
+      myProfile.streak_last_date = todayStr;
+      myProfile.boost_credits = newBoostCredits;
+
+      if (grantedBoost) {
+        setStreakToast("🔥 " + newStreak + " dias seguidos! Has ganado 1 impulso gratis");
+        setTimeout(() => setStreakToast(null), 5000);
+      }
+    }
+
     setMe(myProfile);
 
     await supabase.from("profiles").update({ last_active_at: new Date().toISOString() }).eq("id", myProfile.id);
@@ -168,9 +196,27 @@ export default function SwipeDeck() {
       return true;
     });
 
+    const now = Date.now();
+    const boosted = filtered.filter((p) => p.boosted_until && new Date(p.boosted_until).getTime() > now);
+    const notBoosted = filtered.filter((p) => !(p.boosted_until && new Date(p.boosted_until).getTime() > now));
+    const ordered = [...boosted, ...notBoosted];
+
     setDistanceCapped(!isPremium && cappedSomeone);
-    setDeck(filtered);
+    setDeck(ordered);
     setLoading(false);
+  }
+
+  async function handleUseBoost() {
+    if (!me || usingBoost) return;
+    if (!(me.boost_credits > 0)) return;
+    setUsingBoost(true);
+    const boostedUntil = new Date(Date.now() + 30 * 60000).toISOString();
+    await supabase
+      .from("profiles")
+      .update({ boost_credits: me.boost_credits - 1, boosted_until: boostedUntil })
+      .eq("id", me.id);
+    setMe({ ...me, boost_credits: me.boost_credits - 1, boosted_until: boostedUntil });
+    setUsingBoost(false);
   }
 
   function isOnline(p: Profile) {
@@ -350,8 +396,30 @@ export default function SwipeDeck() {
           👀 Alguien ha visto tu perfil
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <span className="brand" style={{ fontSize: 24, color: "#e8352b" }}>Dandy</span>
+      {streakToast && (
+        <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", background: "#e8352b", color: "#fff", fontWeight: 700, fontSize: 13, padding: "8px 16px", borderRadius: 20, zIndex: 100, textAlign: "center" }}>
+          {streakToast}
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="brand" style={{ fontSize: 24, color: "#e8352b" }}>Dandy</span>
+          {me?.streak_count > 0 && (
+            <span title="Dias seguidos activo" style={{ background: "#2a2a2a", color: "#f2c14e", fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
+              🔥 {me.streak_count} {me.streak_count === 1 ? "dia" : "dias"}
+            </span>
+          )}
+          {me?.boost_credits > 0 && (
+            <button
+              onClick={handleUseBoost}
+              disabled={usingBoost}
+              title="Usa un impulso para aparecer primero durante 30 minutos"
+              style={{ background: "#f2c14e", color: "#0d0d0d", fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20, border: "none", cursor: "pointer" }}
+            >
+              🚀 Impulsar ({me.boost_credits})
+            </button>
+          )}
+        </div>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <a href="/likes" style={{ color: "#f5f5f5" }}>Likes</a>
           <a href="/nearby" style={{ color: "#f5f5f5" }}>Cercanos</a>
@@ -585,5 +653,4 @@ export default function SwipeDeck() {
       )}
     </div>
   );
-}
-
+              }
