@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -30,14 +31,25 @@ export default function Signup() {
       <p style={{ fontSize: 13, color: "#9a9a9a", marginBottom: 20 }}>Para hombres con carácter, barba y algo de historia que contar.</p>
       <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <input type="email" placeholder="Correo" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input
-          type="password"
-          placeholder="Contraseña (mínimo 6 caracteres)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          minLength={6}
-          required
-        />
+        <div style={{ position: "relative" }}>
+          <input
+            type={showPassword ? "text" : "password"}
+            placeholder="Contraseña (mínimo 6 caracteres)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={6}
+            required
+            style={{ width: "100%", paddingRight: 40 }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#8c92a0", cursor: "pointer", fontSize: 16, padding: 0 }}
+            title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+          >
+            {showPassword ? "🙈" : "👁️"}
+          </button>
+        </div>
         {error && <p style={{ color: "#e2504a", fontSize: 13 }}>{error}</p>}
         <button className="primary" disabled={loading}>{loading ? "Creando..." : "Crear cuenta"}</button>
       </form>
@@ -50,3 +62,4 @@ export default function Signup() {
     </div>
   );
 }
+
